@@ -13,6 +13,9 @@ alertas.log
 # Rascunhos do brainstorming (os mockups aprovados ficam em docs/mockups)
 .superpowers/
 
+# Prints do teste de interface
+tests/interface/fotos/
+
 # Python
 __pycache__/
 *.pyc

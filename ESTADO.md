@@ -1,0 +1,79 @@
+# Estado do projeto
+
+*Atualizado em 21/09/2026.*
+
+## O projeto
+
+O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (PW 1.8.7). Ele lista todas as contas anunciadas, calcula quanto cada uma vale pela sua **tabela de valores** e mostra as maiores barganhas (valor dos itens − preço). Também avisa na hora quando aparece uma conta nova, ou mais barata, que bate com uma busca salva.
+
+- **Tecnologia:** Python puro (nada para instalar), com a interface em HTML/JS aberta numa janela própria do Edge.
+- **Detalhes:** o funcionamento está no [README](README.md), e o desenho completo em [docs/superpowers/specs](docs/superpowers/specs/2026-09-21-mercado-pw-design.md).
+
+## Onde estamos
+
+**A primeira versão está pronta e testada.** Tudo o que o desenho aprovado previa foi implementado:
+
+- **Leitura do site:** lista de anúncios, itens de cada conta (inclusive pedras engastadas), catálogo de equipamentos e a busca avançada do próprio site.
+- **Banco local (SQLite):** contas, itens, tabela de valores global, buscas salvas e avisos.
+- **Cálculo do valor:**
+  - faixas de refino, onde vale a maior faixa atingida;
+  - quantidade × valor por unidade;
+  - cotação do bi e do TCC em R$;
+  - lucro e % de desconto.
+- **Coletor em segundo plano:** consulta a lista a cada 60 s (configurável) e lê as contas numa fila. Primeiro as novas e as que baixaram de preço, depois as que têm itens da tabela, depois o resto.
+- **Avisos:** notificação do Windows, bipes, navegador, Telegram e Discord, sem repetir.
+- **Interface:** três abas (Contas, Tabela de valores, Buscas e avisos) mais as configurações, seguindo os mockups aprovados.
+- **Janela própria:** o Edge abre em modo aplicativo, e fechar a janela encerra o programa.
+
+**Testes:**
+- **Automáticos:** 70, com páginas reais do site salvas. Todos passam.
+- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Roda sem erros.
+- **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
+- **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
+
+**Situação dos dados:** o `mercado.db` fica fora do git e foi apagado depois dos testes. Na primeira abertura o programa começa do zero.
+
+## O que falta
+
+**Conferir na prática** (nunca foi confirmado visualmente):
+1. **Notificação do Windows e bipes:** abra ⚙ Configurações → **Testar avisos**.
+2. **Carga inicial completa (~2 h):** nunca rodou até o fim. Vale ver como a busca, a lista e o tamanho do `mercado.db` se comportam com as ~1.500 contas lidas.
+3. **Aviso de verdade:** até agora só foi testado com anúncios simulados. Falta ver acontecer com uma conta nova real no site, depois de salvar uma busca com "me avisar".
+4. **Telegram e Discord:** nunca foram testados com um token ou webhook de verdade.
+
+**Seu trabalho no programa:**
+5. Cadastrar os valores reais na Tabela de valores (ex.: Cosmos +10 = 3 bi) e ajustar a cotação do bi e do TCC.
+
+**Ideias para depois** (nada começado; conversar antes):
+- Usar o histórico de vendas do site (`/history`) para sugerir valores e preços típicos.
+- Avisar com a janela fechada, por um ícone perto do relógio. Foi a opção C no brainstorming e ficou de fora.
+- Gerar um `.exe` para não depender do Python instalado.
+- Apagar o `helper.py`, o `filtros.toml` e o `iniciar.bat` (a versão antiga de linha de comando) quando o programa novo estiver validado.
+
+## Como retomar em outro PC
+
+```
+git clone https://github.com/fecortezini/Classic187AccountMonitor.git
+cd Classic187AccountMonitor
+```
+
+- **Requisitos:** Python 3.11+ e Microsoft Edge. Node 22+ só é necessário para o teste de interface.
+- **Abrir o programa:** dois cliques em `Mercado PW.bat`.
+- **Rodar os testes:**
+  - automáticos: `py -m unittest discover -s tests -t .`
+  - interface: `py -m mercado --sem-janela --porta 8765` e, em outro terminal, `node tests/interface/testar_interface.mjs`
+- **Dados:** cada PC tem o próprio `mercado.db`, com as contas lidas, a tabela de valores e as buscas. Para levar os dados de um PC para outro, copie esse arquivo com o programa fechado.
+
+## Mapa do código
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `mercado/site.py` | Lê o HTML e o JSON do marketplace. |
+| `mercado/banco.py` | SQLite: gravação, busca com filtros, tabela de valores, buscas e avisos. |
+| `mercado/valor.py` | Regras do cálculo de valor e lucro. |
+| `mercado/coletor.py` | Consultas periódicas, fila de leitura e disparo dos avisos. |
+| `mercado/avisos.py` | Canais de aviso. |
+| `mercado/servidor.py` | API local usada pela interface. |
+| `mercado/ui/` | Interface (`index.html`, `app.css`, `app.js`). |
+| `mercado/__main__.py` | Abre tudo e a janela do Edge. |
+| `tests/` | Testes automáticos, páginas reais salvas e o teste de interface. |
