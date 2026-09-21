@@ -289,6 +289,13 @@ class Banco:
     def ids_no_catalogo(self):
         return {r[0] for r in self.con.execute('SELECT item_id FROM conhecidos WHERE no_catalogo = 1')}
 
+    def ids_valorizados(self):
+        """item_ids da tabela de valores e das condições de item das buscas salvas."""
+        ids = {r[0] for r in self.con.execute('SELECT DISTINCT item_id FROM valores WHERE item_id IS NOT NULL')}
+        for b in self.buscas():
+            ids.update(int(c['item_id']) for c in b['filtros'].get('itens') or () if str(c.get('item_id') or '').isdigit())
+        return ids
+
     def sugestoes(self, texto, limite=12):
         """Itens conhecidos (catálogo do site + vistos nas contas) cujo nome contém o texto."""
         q = norm(texto)
@@ -416,6 +423,8 @@ class Banco:
         cfg = self.config()
         p = {'bi': cfg['rs_por_bi'], 'tcc': cfg['rs_por_tcc'], 'kk_bi': float(valor.KK_POR_BI)}
         conds = ['a.ativo = 1']
+        if f.get('ids') is not None:  # usado pelo coletor para conferir só as contas que acabou de ler
+            conds.append(f'a.id IN ({",".join(str(int(i)) for i in f["ids"]) or "NULL"})')
         if nome := norm(f.get('nome')):
             conds.append('a.nome_norm LIKE :nome')
             p['nome'] = f'%{nome}%'
