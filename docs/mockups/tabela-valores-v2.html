@@ -1,0 +1,404 @@
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+    <symbol id="i-coins" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  </defs>
+</svg>
+
+<style>
+  .ui { --bg:#0d0f15; --s1:#12151d; --s2:#181c26; --s3:#1f2430; --s4:#272d3b; --ln:#232937; --ln2:#2f3647;
+        --tx:#eaedf3; --tx2:#aeb5c6; --tx3:#768097; --gold:#e8b64c; --gold2:#f5cd6f; --goldbg:rgba(232,182,76,.13);
+        --ok:#3dd68c; --okbg:rgba(61,214,140,.12); --bad:#f26d6d; --or:#ff9d4d; --ye:#ffd45f; --bl:#79a8ff;
+        font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; font-size:13px; line-height:1.45;
+        color:var(--tx); background:var(--bg); border:1px solid #2b3142; border-radius:12px; overflow:hidden;
+        box-shadow:0 30px 70px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.02) inset; margin:.75rem 0 2.25rem; position:relative; }
+  .ui * { box-sizing:border-box; }
+  .ui svg.ic { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+  .ui b { font-weight:600; }
+
+  /* janela */
+  .ui-title { height:34px; display:flex; align-items:center; gap:8px; padding:0 0 0 12px; background:#0a0c11; border-bottom:1px solid var(--ln); font-size:12px; color:var(--tx2); }
+  .ui-logo { width:16px; height:16px; border-radius:4px; background:linear-gradient(135deg,var(--gold2),#b9832a); box-shadow:0 0 0 1px rgba(0,0,0,.4) inset; }
+  .ui-title .dim { color:var(--tx3); }
+  .ui-win { margin-left:auto; display:flex; height:100%; }
+  .ui-win i { width:44px; display:flex; align-items:center; justify-content:center; font-style:normal; color:var(--tx3); font-size:12px; }
+
+  /* navegação */
+  .ui-nav { display:flex; align-items:center; gap:2px; padding:0 14px; height:48px; background:var(--s1); border-bottom:1px solid var(--ln); }
+  .ui-tab { display:flex; align-items:center; gap:8px; height:48px; padding:0 14px; color:var(--tx2); font-weight:500; position:relative; }
+  .ui-tab.on { color:var(--tx); }
+  .ui-tab.on::after { content:''; position:absolute; left:12px; right:12px; bottom:-1px; height:2px; border-radius:2px; background:var(--gold); }
+  .ui-count { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--s3); color:var(--tx2); font-variant-numeric:tabular-nums; }
+  .ui-count.gold { background:var(--goldbg); color:var(--gold2); }
+  .ui-navr { margin-left:auto; display:flex; align-items:center; gap:10px; }
+  .ui-rate { display:flex; align-items:center; gap:6px; padding:5px 10px; border:1px solid var(--ln2); border-radius:8px; font-size:12px; color:var(--tx2); background:var(--s2); }
+  .ui-rate b { color:var(--gold2); font-variant-numeric:tabular-nums; }
+  .ui-live { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--tx3); }
+  .ui-live i { width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px var(--okbg); }
+  .ui-icbtn { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; color:var(--tx2); border:1px solid var(--ln2); background:var(--s2); }
+
+  /* página */
+  .ui-page { padding:22px 24px 24px; display:flex; flex-direction:column; gap:18px; }
+  .ui-h1 { font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif; font-size:21px; font-weight:600; letter-spacing:-.01em; }
+  .ui-lead { color:var(--tx2); margin-top:2px; }
+  .ui-kpis { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
+  .ui-kpi { background:var(--s2); border:1px solid var(--ln); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:2px; }
+  .ui-kpi span { font-size:11.5px; color:var(--tx3); }
+  .ui-kpi b { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .ui-kpi em { font-style:normal; font-size:11.5px; color:var(--tx3); }
+  .ui-kpi.hi { background:linear-gradient(180deg, rgba(61,214,140,.08), rgba(61,214,140,.02)); border-color:rgba(61,214,140,.25); }
+  .ok { color:var(--ok); }
+
+  .ui-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:16px; align-items:start; }
+  .ui-card { background:var(--s1); border:1px solid var(--ln); border-radius:12px; }
+
+  /* lista de valores */
+  .ui-cardhead { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid var(--ln); }
+  .ui-search { display:flex; align-items:center; gap:8px; height:34px; padding:0 11px; border-radius:8px; background:var(--bg); border:1px solid var(--ln2); color:var(--tx3); flex:1; }
+  .ui-search.focus { border-color:var(--gold); box-shadow:0 0 0 3px var(--goldbg); color:var(--tx); }
+  .ui-caret { display:inline-block; width:1px; height:15px; background:var(--gold2); margin-left:-5px; }
+  .ui-select { display:flex; align-items:center; gap:6px; height:34px; padding:0 10px; border-radius:8px; border:1px solid var(--ln2); background:var(--s2); color:var(--tx2); font-size:12.5px; white-space:nowrap; }
+  .ui-cols, .ui-row { display:grid; grid-template-columns:40px minmax(150px,1.5fr) minmax(130px,1fr) 128px 66px 60px; align-items:center; gap:12px; padding:0 14px; }
+  .ui-cols { height:34px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--tx3); border-bottom:1px solid var(--ln); }
+  .r { text-align:right; justify-self:end; }
+  .ui-group { display:flex; align-items:center; gap:8px; padding:12px 14px 6px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--tx3); font-weight:600; }
+  .ui-group em { font-style:normal; font-weight:500; color:var(--tx3); background:var(--s3); border-radius:999px; padding:0 7px; letter-spacing:0; }
+  .ui-row { min-height:56px; border-top:1px solid rgba(255,255,255,.03); }
+  .ui-row:hover, .ui-row.hover { background:var(--s2); }
+  .ui-ico { width:36px; height:36px; border-radius:8px; background:#0a0c11; border:1px solid var(--ln2); padding:2px; image-rendering:auto; }
+  .ui-ico.g6 { border-color:rgba(255,157,77,.55); box-shadow:0 0 12px rgba(255,157,77,.12); }
+  .ui-name { display:flex; flex-direction:column; min-width:0; }
+  .ui-name b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ui-name small, .ui-val small { color:var(--tx3); font-size:11.5px; }
+  .or { color:var(--or); }
+  .ui-pill { display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 9px; border-radius:999px; font-size:12px; background:var(--s3); color:var(--tx2); white-space:nowrap; }
+  .ui-pill.gold { background:var(--goldbg); color:var(--gold2); }
+  .ui-pill.mute { background:transparent; color:var(--tx3); padding:0; }
+  .ui-val { display:flex; flex-direction:column; align-items:flex-end; }
+  .ui-val b { font-size:14px; font-variant-numeric:tabular-nums; }
+  .ui-num { text-align:right; font-variant-numeric:tabular-nums; color:var(--tx2); }
+  .ui-act { display:flex; gap:4px; justify-content:flex-end; opacity:0; }
+  .ui-row.hover .ui-act { opacity:1; }
+  .ui-act span { width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:7px; color:var(--tx2); background:var(--s3); }
+  .ui-note { display:flex; gap:9px; align-items:flex-start; margin:10px 14px 14px; padding:10px 12px; border-radius:9px; background:var(--s2); color:var(--tx2); font-size:12px; }
+  .ui-note svg { color:var(--bl); margin-top:1px; }
+
+  /* formulário lateral */
+  .ui-form { padding:16px; display:flex; flex-direction:column; gap:14px; }
+  .ui-form h3 { font-size:15px; font-weight:600; margin:0; }
+  .ui-form .sub { color:var(--tx3); font-size:12px; margin-top:2px; }
+  .ui-sugs { border:1px solid var(--ln2); border-radius:10px; overflow:hidden; margin-top:-6px; background:var(--s2); }
+  .ui-sug { display:flex; align-items:center; gap:10px; padding:8px 10px; }
+  .ui-sug + .ui-sug { border-top:1px solid var(--ln); }
+  .ui-sug.on { background:var(--s4); }
+  .ui-sug .ui-ico { width:30px; height:30px; border-radius:7px; }
+  .ui-sug div { display:flex; flex-direction:column; min-width:0; flex:1; }
+  .ui-sug small { color:var(--tx3); font-size:11.5px; }
+  .ui-sug mark { background:none; color:var(--gold2); }
+  kbd { font-family:inherit; font-size:10.5px; color:var(--tx3); border:1px solid var(--ln2); border-bottom-width:2px; border-radius:5px; padding:0 5px; }
+  .ui-field { display:flex; flex-direction:column; gap:6px; }
+  .ui-field label { font-size:12px; font-weight:600; color:var(--tx2); }
+  .ui-field small { color:var(--tx3); font-size:11.5px; }
+  .ui-seg { display:inline-flex; padding:3px; border-radius:9px; background:var(--bg); border:1px solid var(--ln2); gap:2px; }
+  .ui-seg span { padding:4px 11px; border-radius:6px; color:var(--tx2); font-size:12px; white-space:nowrap; }
+  .ui-seg span.on { background:var(--s4); color:var(--tx); box-shadow:0 1px 0 rgba(255,255,255,.05) inset; }
+  .ui-seg span.dis { color:#4a5266; }
+  .ui-valin { display:flex; gap:8px; align-items:center; }
+  .ui-input { height:36px; display:flex; align-items:center; padding:0 12px; border-radius:8px; background:var(--bg); border:1px solid var(--ln2); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; flex:1; }
+  .ui-impact { display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--ln); border-radius:10px; overflow:hidden; }
+  .ui-impact div { padding:9px 10px; display:flex; flex-direction:column; gap:1px; background:var(--s2); }
+  .ui-impact div + div { border-left:1px solid var(--ln); }
+  .ui-impact span { font-size:11px; color:var(--tx3); }
+  .ui-impact b { font-variant-numeric:tabular-nums; }
+  .ui-actions { display:flex; gap:8px; justify-content:flex-end; }
+  .ui-btn { height:36px; padding:0 16px; display:inline-flex; align-items:center; gap:7px; border-radius:8px; font-weight:600; font-size:13px; }
+  .ui-btn.primary { background:var(--gold); color:#1d1404; box-shadow:0 1px 0 rgba(255,255,255,.25) inset; }
+  .ui-btn.ghost { color:var(--tx2); border:1px solid var(--ln2); }
+
+  /* tela 2: painel de detalhes */
+  .ui-split { display:grid; grid-template-columns:minmax(0,1fr) 400px; min-height:520px; }
+  .ui-fade { background:var(--s1); position:relative; overflow:hidden; }
+  .ui-fade::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg, rgba(13,15,21,.55), rgba(13,15,21,.25)); }
+  .ui-ghostrow { height:44px; margin:0 16px; border-bottom:1px solid var(--ln); display:flex; align-items:center; gap:12px; color:var(--tx3); }
+  .ui-ghostrow i { height:9px; border-radius:5px; background:var(--s3); display:block; }
+  .ui-det { background:var(--s1); border-left:1px solid var(--ln); padding:16px; display:flex; flex-direction:column; gap:12px; position:relative; }
+  .ui-dethead { display:flex; gap:11px; align-items:center; }
+  .ui-dethead img { width:40px; height:40px; border-radius:50%; background:var(--s3); border:1px solid var(--ln2); }
+  .ui-dethead h4 { margin:0; font-size:15px; font-weight:600; }
+  .ui-dethead small { color:var(--tx3); font-size:12px; }
+  .ui-money { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--ln); border:1px solid var(--ln); border-radius:10px; overflow:hidden; }
+  .ui-money div { background:var(--s2); padding:8px 10px; display:flex; flex-direction:column; }
+  .ui-money span { font-size:11px; color:var(--tx3); }
+  .ui-money b { font-variant-numeric:tabular-nums; }
+  .ui-subtabs { display:flex; gap:4px; border-bottom:1px solid var(--ln); }
+  .ui-subtabs span { padding:6px 10px; color:var(--tx3); font-size:12.5px; position:relative; }
+  .ui-subtabs span.on { color:var(--tx); }
+  .ui-subtabs span.on::after { content:''; position:absolute; left:8px; right:8px; bottom:-1px; height:2px; background:var(--gold); border-radius:2px; }
+  .ui-slots { display:grid; grid-template-columns:repeat(6, 48px); gap:7px; }
+  .ui-slot { width:48px; height:48px; border-radius:8px; background:#0a0c11; border:1px solid var(--ln2); position:relative; display:flex; align-items:center; justify-content:center; }
+  .ui-slot img { width:34px; height:34px; }
+  .ui-slot em { position:absolute; right:3px; bottom:1px; font-style:normal; font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px #000, 0 0 3px #000; }
+  .ui-slot.sel { border-color:var(--gold); box-shadow:0 0 0 3px var(--goldbg); }
+  .ui-slot.empty { background:transparent; border-style:dashed; border-color:#252b39; }
+  .ui-pop { position:absolute; width:320px; left:40px; top:234px; background:var(--s2); border:1px solid var(--ln2); border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,.6); padding:14px; display:flex; flex-direction:column; gap:12px; z-index:2; }
+  .ui-pop::after { content:''; position:absolute; left:48px; top:-7px; width:12px; height:12px; background:var(--s2); border-left:1px solid var(--ln2); border-top:1px solid var(--ln2); transform:rotate(45deg); }
+  .ui-pophead { display:flex; gap:10px; align-items:center; }
+  .ui-pophead div { display:flex; flex-direction:column; }
+  .ui-pophead small { color:var(--tx3); font-size:11.5px; }
+  .ui-calc { background:var(--bg); border:1px solid var(--ln); border-radius:9px; padding:9px 11px; display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--tx2); }
+  .ui-calc div { display:flex; justify-content:space-between; }
+  .ui-calc b { color:var(--tx); font-variant-numeric:tabular-nums; }
+
+  /* tela 3: configurações */
+  .ui-dim { position:relative; min-height:560px; background:
+      linear-gradient(rgba(6,7,10,.72), rgba(6,7,10,.72)),
+      repeating-linear-gradient(0deg, var(--s1) 0 44px, var(--bg) 44px 45px); display:flex; align-items:center; justify-content:center; padding:28px; }
+  .ui-modal { width:600px; max-width:100%; background:var(--s1); border:1px solid var(--ln2); border-radius:14px; box-shadow:0 30px 80px rgba(0,0,0,.6); overflow:hidden; }
+  .ui-mhead { display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--ln); }
+  .ui-mhead h3 { margin:0; font-size:16px; font-weight:600; }
+  .ui-sec { padding:14px 18px; display:flex; flex-direction:column; gap:10px; }
+  .ui-sec + .ui-sec { border-top:1px solid var(--ln); }
+  .ui-sectitle { display:flex; align-items:center; gap:8px; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--tx3); font-weight:600; }
+  .ui-set { display:flex; align-items:center; gap:14px; }
+  .ui-set > div:first-child { flex:1; display:flex; flex-direction:column; }
+  .ui-set small { color:var(--tx3); font-size:11.5px; }
+  .ui-step { display:inline-flex; align-items:center; border:1px solid var(--ln2); border-radius:8px; background:var(--bg); overflow:hidden; }
+  .ui-step span { width:30px; height:32px; display:flex; align-items:center; justify-content:center; color:var(--tx2); background:var(--s2); }
+  .ui-step b { min-width:64px; text-align:center; font-variant-numeric:tabular-nums; }
+  .ui-money-in { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 10px; border:1px solid var(--ln2); border-radius:8px; background:var(--bg); min-width:130px; }
+  .ui-money-in span { color:var(--tx3); }
+  .ui-money-in b { font-variant-numeric:tabular-nums; }
+  .ui-toggle { width:38px; height:22px; border-radius:999px; background:var(--s4); position:relative; flex-shrink:0; }
+  .ui-toggle::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#8b93a7; }
+  .ui-toggle.on { background:var(--gold); }
+  .ui-toggle.on::after { left:19px; background:#1d1404; }
+  .ui-link { color:var(--gold2); font-size:12.5px; font-weight:600; }
+  .ui-mfoot { display:flex; justify-content:flex-end; gap:8px; padding:14px 18px; border-top:1px solid var(--ln); background:var(--s2); }
+</style>
+
+<h2>Tabela de valores, versão 2</h2>
+<p class="subtitle">Refeito como telas de programa. Os ícones são os reais do jogo. As contagens de Cosmos são reais (hoje há 16 contas com +10 ou mais e 6 com +12 ou mais); os outros números são exemplo.</p>
+
+<!-- =============================== TELA 1 =============================== -->
+<h3>1 · Aba "Tabela de valores"</h3>
+<p class="subtitle" style="margin-bottom:.25rem">À esquerda, o que já está cadastrado, agrupado por tipo. À direita, o cadastro: você digita, escolhe o item e vê na hora quanto ele vale e quantas contas têm.</p>
+<div class="ui">
+  <div class="ui-title"><span class="ui-logo"></span>Mercado PW <span class="dim">· The Classic 1.8.7</span><span class="ui-win"><i>—</i><i>▢</i><i>✕</i></span></div>
+  <div class="ui-nav">
+    <span class="ui-tab"><svg class="ic"><use href="#i-list"/></svg>Contas <span class="ui-count">1.509</span></span>
+    <span class="ui-tab on"><svg class="ic"><use href="#i-coins"/></svg>Tabela de valores</span>
+    <span class="ui-tab"><svg class="ic"><use href="#i-bell"/></svg>Buscas e avisos <span class="ui-count gold">2 ativas</span></span>
+    <div class="ui-navr">
+      <span class="ui-rate">1 bi <b>R$ 500,00</b></span>
+      <span class="ui-rate">1 TCC <b>R$ 1,00</b></span>
+      <span class="ui-live"><i></i>Atualizado há 20 s</span>
+      <span class="ui-icbtn"><svg class="ic"><use href="#i-gear"/></svg></span>
+    </div>
+  </div>
+
+  <div class="ui-page">
+    <div>
+      <div class="ui-h1">Tabela de valores</div>
+      <div class="ui-lead">Quanto cada item vale pra você. O valor de uma conta é a soma dos itens dela que estão nesta tabela.</div>
+    </div>
+
+    <div class="ui-kpis">
+      <div class="ui-kpi"><span>Valores cadastrados</span><b>6</b><em>5 itens diferentes</em></div>
+      <div class="ui-kpi"><span>Contas com algum item da tabela</span><b>214</b><em>de 1.509 anunciadas</em></div>
+      <div class="ui-kpi hi"><span>Maior lucro agora</span><b class="ok">+R$ 720</b><em>Lunaris · Arqueiro 105 · 900 TCC</em></div>
+    </div>
+
+    <div class="ui-grid">
+      <section class="ui-card">
+        <div class="ui-cardhead">
+          <div class="ui-search"><svg class="ic"><use href="#i-search"/></svg>Filtrar a tabela…</div>
+          <div class="ui-select">Ordenar por valor <svg class="ic" style="width:14px;height:14px"><use href="#i-chev"/></svg></div>
+        </div>
+        <div class="ui-cols"><span></span><span>Item</span><span>Condição</span><span class="r">Valor por unidade</span><span class="r">Contas</span><span></span></div>
+
+        <div class="ui-group">Livros <em>2</em></div>
+        <div class="ui-row">
+          <img class="ui-ico g6" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/72573.png" alt="">
+          <div class="ui-name"><b class="or">Cosmos</b><small>Livro · equipado ou guardado</small></div>
+          <div><span class="ui-pill gold">refino ≥ +12</span></div>
+          <div class="ui-val"><b>6 bi</b><small>≈ R$ 3.000</small></div>
+          <div class="ui-num">6</div>
+          <div class="ui-act"><span><svg class="ic"><use href="#i-edit"/></svg></span><span><svg class="ic"><use href="#i-trash"/></svg></span></div>
+        </div>
+        <div class="ui-row">
+          <img class="ui-ico g6" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/72573.png" alt="">
+          <div class="ui-name"><b class="or">Cosmos</b><small>Livro · equipado ou guardado</small></div>
+          <div><span class="ui-pill gold">refino ≥ +10</span></div>
+          <div class="ui-val"><b>3 bi</b><small>≈ R$ 1.500</small></div>
+          <div class="ui-num">16</div>
+          <div class="ui-act"><span><svg class="ic"><use href="#i-edit"/></svg></span><span><svg class="ic"><use href="#i-trash"/></svg></span></div>
+        </div>
+
+        <div class="ui-group">Pedras engastadas <em>1</em></div>
+        <div class="ui-row hover">
+          <img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/38154.png" alt="">
+          <div class="ui-name"><b>Pedra do Demônio</b><small>Nível de Ataque +3 · conta cada pedra</small></div>
+          <div><span class="ui-pill mute">qualquer</span></div>
+          <div class="ui-val"><b>20 kk</b><small>≈ R$ 10,00</small></div>
+          <div class="ui-num">212</div>
+          <div class="ui-act"><span><svg class="ic"><use href="#i-edit"/></svg></span><span><svg class="ic"><use href="#i-trash"/></svg></span></div>
+        </div>
+
+        <div class="ui-group">Materiais <em>3</em></div>
+        <div class="ui-row">
+          <img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/11208.png" alt="">
+          <div class="ui-name"><b>Pedra Imortal</b><small>Material · mochila e banco</small></div>
+          <div><span class="ui-pill mute">qualquer</span></div>
+          <div class="ui-val"><b>2 kk</b><small>≈ R$ 1,00</small></div>
+          <div class="ui-num">96</div>
+          <div class="ui-act"><span><svg class="ic"><use href="#i-edit"/></svg></span><span><svg class="ic"><use href="#i-trash"/></svg></span></div>
+        </div>
+        <div class="ui-row">
+          <img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/65700.png" alt="">
+          <div class="ui-name"><b>Poeira de Cosmo Cerúleo</b><small>Material · mochila e banco</small></div>
+          <div><span class="ui-pill mute">qualquer</span></div>
+          <div class="ui-val"><b>1 kk</b><small>≈ R$ 0,50</small></div>
+          <div class="ui-num">420</div>
+          <div class="ui-act"><span><svg class="ic"><use href="#i-edit"/></svg></span><span><svg class="ic"><use href="#i-trash"/></svg></span></div>
+        </div>
+        <div class="ui-row">
+          <img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/58460.png" alt="">
+          <div class="ui-name"><b>Pedra Brilhante do Submundo</b><small>Material · mochila e banco</small></div>
+          <div><span class="ui-pill mute">qualquer</span></div>
+          <div class="ui-val"><b>0,5 kk</b><small>≈ R$ 0,25</small></div>
+          <div class="ui-num">311</div>
+          <div class="ui-act"><span><svg class="ic"><use href="#i-edit"/></svg></span><span><svg class="ic"><use href="#i-trash"/></svg></span></div>
+        </div>
+
+        <div class="ui-note"><svg class="ic"><use href="#i-info"/></svg><span>Quando o mesmo item tem mais de uma faixa, vale a maior que a conta atinge: um Cosmos +12 conta <b>6 bi</b>, não 3 + 6. Itens empilháveis contam quantidade × valor.</span></div>
+      </section>
+
+      <aside class="ui-card">
+        <div class="ui-form">
+          <div><h3>Adicionar item</h3><div class="sub">Aparecem os equipamentos do site e tudo o que já foi visto nas contas: materiais, pedras e cartas.</div></div>
+          <div class="ui-search focus"><svg class="ic"><use href="#i-search"/></svg>pérola astral<span class="ui-caret"></span></div>
+          <div class="ui-sugs">
+            <div class="ui-sug on"><img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/47498.png" alt=""><div><b><mark>Pérola Astral</mark> - Nv 4</b><small>Material · vista em 58 contas</small></div><kbd>Enter</kbd></div>
+            <div class="ui-sug"><img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/47453.png" alt=""><div><b><mark>Pérola Astral</mark> - Nv 2</b><small>Material · vista em 97 contas</small></div></div>
+          </div>
+          <div class="ui-field">
+            <label>Condição</label>
+            <div class="ui-seg"><span class="on">Qualquer</span><span class="dis">≥ +8</span><span class="dis">≥ +10</span><span class="dis">≥ +12</span></div>
+            <small>Este item não tem refino. Para equipamentos e livros, escolha a faixa.</small>
+          </div>
+          <div class="ui-field">
+            <label>Valor por unidade</label>
+            <div class="ui-valin"><div class="ui-input">5</div><div class="ui-seg"><span class="on">kk</span><span>bi</span></div></div>
+            <small>= 0,005 bi ≈ <b style="color:var(--tx)">R$ 2,50</b> por unidade</small>
+          </div>
+          <div class="ui-impact">
+            <div><span>Contas que têm</span><b>58</b></div>
+            <div><span>Média por conta</span><b>35 un.</b></div>
+            <div><span>Soma média</span><b>≈ R$ 87</b></div>
+          </div>
+          <div class="ui-actions"><span class="ui-btn ghost">Cancelar</span><span class="ui-btn primary"><svg class="ic"><use href="#i-plus"/></svg>Adicionar à tabela</span></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- =============================== TELA 2 =============================== -->
+<h3>2 · Atalho: definir o valor olhando uma conta</h3>
+<p class="subtitle" style="margin-bottom:.25rem">Recorte da aba Contas. Clicando num item do painel de detalhes, abre um balão para cadastrar o valor. O lucro da conta é recalculado ali mesmo.</p>
+<div class="ui">
+  <div class="ui-title"><span class="ui-logo"></span>Mercado PW <span class="dim">· The Classic 1.8.7</span><span class="ui-win"><i>—</i><i>▢</i><i>✕</i></span></div>
+  <div class="ui-split">
+    <div class="ui-fade">
+      <div style="height:18px"></div>
+      <div class="ui-ghostrow"><i style="width:22%"></i><i style="width:14%"></i><i style="width:10%;margin-left:auto"></i><i style="width:12%"></i></div>
+      <div class="ui-ghostrow" style="background:rgba(232,182,76,.06)"><i style="width:18%"></i><i style="width:16%"></i><i style="width:10%;margin-left:auto"></i><i style="width:12%"></i></div>
+      <div class="ui-ghostrow"><i style="width:25%"></i><i style="width:12%"></i><i style="width:10%;margin-left:auto"></i><i style="width:12%"></i></div>
+      <div class="ui-ghostrow"><i style="width:20%"></i><i style="width:15%"></i><i style="width:10%;margin-left:auto"></i><i style="width:12%"></i></div>
+      <div class="ui-ghostrow"><i style="width:23%"></i><i style="width:13%"></i><i style="width:10%;margin-left:auto"></i><i style="width:12%"></i></div>
+    </div>
+    <div class="ui-det">
+      <div class="ui-dethead"><img src="https://theclassic.games/assets/img/pw_roles/occu_6.png" alt=""><div><h4>Lunaris</h4><small>Arqueiro · nível 105 · Céu Majestoso VII</small></div></div>
+      <div class="ui-money">
+        <div><span>Preço</span><b>900 TCC</b></div>
+        <div><span>Valor estimado</span><b>R$ 1.620</b></div>
+        <div><span>Lucro</span><b class="ok">+R$ 720</b></div>
+      </div>
+      <div class="ui-subtabs"><span>Equipado</span><span class="on">Mochila</span><span>Banco</span><span>Cartas</span><span>Mascotes</span></div>
+      <div class="ui-slots">
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/60017.png" alt=""><em>17257</em></div>
+        <div class="ui-slot sel"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/47498.png" alt=""><em>40</em></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/5639.png" alt=""><em>8008</em></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/65700.png" alt=""><em>761</em></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/11208.png" alt=""><em>12</em></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/58460.png" alt=""><em>300</em></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/47453.png" alt=""><em>66</em></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/41831.png" alt=""></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/17643.png" alt=""></div>
+        <div class="ui-slot"><img src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/66952.png" alt=""></div>
+        <div class="ui-slot empty"></div>
+        <div class="ui-slot empty"></div>
+      </div>
+  <div class="ui-pop">
+    <div class="ui-pophead"><img class="ui-ico" src="https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/47498.png" alt=""><div><b>Pérola Astral - Nv 4</b><small>40 unidades na mochila desta conta</small></div></div>
+    <div class="ui-field">
+      <label>Valor por unidade</label>
+      <div class="ui-valin"><div class="ui-input">5</div><div class="ui-seg"><span class="on">kk</span><span>bi</span></div></div>
+    </div>
+    <div class="ui-calc">
+      <div><span>Nesta conta: 40 × 5 kk</span><b>0,2 bi ≈ R$ 100</b></div>
+      <div><span>Lucro da conta</span><b><span style="color:var(--tx3);font-weight:500">+R$ 720 →</span> <span class="ok">+R$ 820</span></b></div>
+    </div>
+    <div class="ui-actions"><span class="ui-btn ghost">Cancelar</span><span class="ui-btn primary">Salvar na tabela</span></div>
+  </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============================== TELA 3 =============================== -->
+<h3>3 · Configurações</h3>
+<p class="subtitle" style="margin-bottom:.25rem">Abre pelo botão de engrenagem no canto. Tudo aqui é editável, inclusive o tempo de consulta.</p>
+<div class="ui">
+  <div class="ui-title"><span class="ui-logo"></span>Mercado PW <span class="dim">· The Classic 1.8.7</span><span class="ui-win"><i>—</i><i>▢</i><i>✕</i></span></div>
+  <div class="ui-dim">
+    <div class="ui-modal">
+      <div class="ui-mhead"><h3>Configurações</h3><svg class="ic" style="color:var(--tx3)"><use href="#i-x"/></svg></div>
+
+      <div class="ui-sec">
+        <div class="ui-sectitle"><svg class="ic"><use href="#i-refresh"/></svg>Consulta ao site</div>
+        <div class="ui-set"><div><b>Atualizar a lista de contas a cada</b><small>Mínimo de 30 s, para não sobrecarregar o site.</small></div>
+          <div class="ui-step"><span><svg class="ic"><use href="#i-minus"/></svg></span><b>60 s</b><span><svg class="ic"><use href="#i-plus"/></svg></span></div></div>
+        <div class="ui-set"><div><b>Pausa entre aberturas de contas</b><small>Menor carrega a base inicial mais rápido, mas pesa mais no site.</small></div>
+          <div class="ui-step"><span><svg class="ic"><use href="#i-minus"/></svg></span><b>2 s</b><span><svg class="ic"><use href="#i-plus"/></svg></span></div></div>
+      </div>
+
+      <div class="ui-sec">
+        <div class="ui-sectitle"><svg class="ic"><use href="#i-coins"/></svg>Cotações</div>
+        <div class="ui-set"><div><b>1 bi de ouro</b><small>Preço atual do bi em reais.</small></div><div class="ui-money-in"><span>R$</span><b>500,00</b></div></div>
+        <div class="ui-set"><div><b>1 TCC</b><small>No site é R$ 1,00. Se comprar TCC de jogadores com desconto, ajuste aqui.</small></div><div class="ui-money-in"><span>R$</span><b>1,00</b></div></div>
+      </div>
+
+      <div class="ui-sec">
+        <div class="ui-sectitle"><svg class="ic"><use href="#i-bell"/></svg>Avisos</div>
+        <div class="ui-set"><div><b>Notificação do Windows</b><small>Fica na tela até você fechar. Clicar abre a conta no programa.</small></div><span class="ui-toggle on"></span></div>
+        <div class="ui-set"><div><b>Bipes</b><small>Tocam mesmo com o "Não perturbe" ligado, por exemplo durante o jogo.</small></div><span class="ui-toggle on"></span></div>
+        <div class="ui-set"><div><b>Abrir o anúncio no navegador</b><small>Abre a página de compra assim que o aviso sai.</small></div><span class="ui-toggle"></span></div>
+        <div class="ui-set"><div><b>Telegram</b><small>Receber os avisos no celular.</small></div><span class="ui-link">Configurar</span></div>
+        <div class="ui-set"><div><b>Discord</b><small>Enviar para um canal seu.</small></div><span class="ui-link">Configurar</span></div>
+      </div>
+
+      <div class="ui-mfoot"><span class="ui-btn ghost">Cancelar</span><span class="ui-btn primary">Salvar</span></div>
+    </div>
+  </div>
+</div>

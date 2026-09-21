@@ -1,0 +1,67 @@
+# =====================================================================
+#  Filtros do helper do Marketplace The Classic (PW 1.8.7)
+#
+#  O helper relê este arquivo a cada verificação: dá para editar com ele rodando.
+#  Nomes são comparados sem diferenciar maiúsculas e acentos, e basta uma parte
+#  do nome ("Caçador Penado" encontra "★★★Caçador Penado").
+#  Para ver os nomes exatos dos itens de um anúncio:  py helper.py --itens 45520
+# =====================================================================
+
+intervalo_segundos = 60      # tempo entre verificações (mínimo 30)
+pausa_entre_paginas = 2      # pausa entre aberturas de anúncios, para não sobrecarregar o site
+
+[aviso]
+windows = true               # notificação do Windows (fica na tela; clicar abre o anúncio)
+som = true                   # 3 bipes (tocam mesmo com o "Não perturbe" ligado, ex.: jogando)
+abrir_navegador = false      # true = abre o anúncio no navegador na hora
+# Para receber no celular, preencha um destes (opcional):
+telegram_token = ""          # token do seu bot (crie com o @BotFather no Telegram)
+telegram_chat_id = ""        # seu chat id (pegue com o @userinfobot)
+discord_webhook = ""         # URL de webhook de um canal seu no Discord
+
+# ---------------------------------------------------------------------
+#  Cada [[filtro]] é uma regra. O aviso sai quando um anúncio novo (ou que
+#  baixou de preço) bate com ela. Campos (todos opcionais, menos "nome"):
+#
+#    preco_max, preco_min   em TCC
+#    nivel_min              nível mínimo do personagem
+#    classes                ex.: ["Arqueiro", "Bárbaro"]
+#    ceu                    parte do nome do Céu, ex.: "Majestoso"
+#    modo                   "todos" (padrão) = precisa ter todos os itens
+#                           "qualquer"       = basta um dos itens
+#    ativo                  false desliga o filtro sem apagar
+#
+#  Cada [[filtro.itens]] logo abaixo é um item que o personagem precisa ter:
+#
+#    nome         parte do nome do item
+#    refino_min   refino mínimo (ex.: 10 para +10)
+#    qtd_min      quantidade mínima (soma todas as pilhas: inventário + banco...)
+#    onde         "equipado", "inventario", "banco", "cartas", "runas", "mascotes"...
+#                 (sem "onde" = em qualquer lugar)
+#    texto        trecho que precisa aparecer na descrição do item,
+#                 ex.: "Nível de Ataque +80"
+# ---------------------------------------------------------------------
+
+[[filtro]]
+nome = "Arqueiro com Caçador Penado +10"
+classes = ["Arqueiro"]
+preco_max = 1500
+
+  [[filtro.itens]]
+  nome = "Caçador Penado"
+  refino_min = 10
+  onde = "equipado"
+
+[[filtro]]
+nome = "Banco com 20 mil+ Pedra Perfeita"
+preco_max = 300
+
+  [[filtro.itens]]
+  nome = "Pedra Perfeita"
+  qtd_min = 20000
+
+[[filtro]]
+nome = "Qualquer nível 105 por até 40 TCC"
+ativo = false                # exemplo desligado: hoje há dezenas de nv 105 nessa faixa
+nivel_min = 105
+preco_max = 40

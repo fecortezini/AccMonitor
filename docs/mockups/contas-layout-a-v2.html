@@ -1,0 +1,125 @@
+<style>
+  .mk { --bg:#12141a; --pn:#1a1d25; --pn2:#222632; --bd:#2c3140; --tx:#e7e8ee; --mu:#8b91a3;
+        --gold:#f0b84a; --ok:#3ecf8e; --bad:#ef6363; --blue:#6aa8ff; --orange:#ff9d4d;
+        background:var(--bg); color:var(--tx); border-radius:10px; border:1px solid var(--bd);
+        font:12.5px/1.4 system-ui, sans-serif; overflow:hidden; }
+  .mk * { box-sizing:border-box; }
+  .mk-top { display:flex; align-items:center; gap:4px; padding:7px 10px; background:var(--pn); border-bottom:1px solid var(--bd); }
+  .mk-tab { padding:5px 12px; border-radius:6px; color:var(--mu); }
+  .mk-tab.on { background:var(--pn2); color:var(--tx); font-weight:600; }
+  .mk-rate { margin-left:auto; color:var(--mu); font-size:11.5px; }
+  .mk-rate b { color:var(--gold); font-weight:600; }
+  .mk-row { display:flex; min-height:470px; }
+  .mk-side { width:27%; min-width:230px; flex-shrink:0; background:var(--pn); padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .mk-grip { width:6px; flex-shrink:0; background:var(--bd); cursor:col-resize; position:relative; }
+  .mk-grip::after { content:'⋮'; position:absolute; top:50%; left:-1px; transform:translateY(-50%); color:var(--mu); font-size:12px; }
+  .mk-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--mu); margin-top:2px; }
+  .mk-chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .mk-chip { padding:3px 8px; border-radius:11px; background:var(--pn2); color:var(--mu); font-size:11.5px; }
+  .mk-chip.on { background:#2d3b57; color:#cfe0ff; }
+  .mk-in { background:var(--bg); border:1px solid var(--bd); border-radius:5px; padding:4px 7px; color:var(--tx); font-size:12px; }
+  .mk-cond { background:var(--pn2); border:1px solid var(--bd); border-radius:7px; padding:7px; font-size:12px; display:grid; grid-template-columns:1fr auto; gap:5px; align-items:center; }
+  .mk-cond .x { color:var(--mu); }
+  .mk-cond .f { grid-column:1 / -1; display:flex; gap:5px; }
+  .mk-btn { background:var(--gold); color:#1b1405; border-radius:6px; padding:7px 10px; font-weight:700; text-align:center; font-size:12px; }
+  .mk-btn.ghost { background:transparent; color:var(--gold); border:1px solid var(--gold); }
+  .mk-main { flex:1; min-width:0; padding:10px; }
+  .mk-sum { color:var(--mu); font-size:11.5px; margin-bottom:7px; }
+  .mk-sum b { color:var(--tx); }
+  table.mk-t { width:100%; border-collapse:collapse; font-size:12px; }
+  .mk-t th { text-align:left; color:var(--mu); font-weight:500; font-size:11px; padding:5px 6px; border-bottom:1px solid var(--bd); white-space:nowrap; }
+  .mk-t td { padding:6px; border-bottom:1px solid #20242e; white-space:nowrap; }
+  .mk-t tr.sel td { background:#232b3d; }
+  .mk-t .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .mk-ok { color:var(--ok); font-weight:600; }
+  .mk-bad { color:var(--bad); }
+  .mk-new { background:var(--gold); color:#1b1405; font-size:9px; font-weight:800; padding:1px 4px; border-radius:4px; margin-left:5px; vertical-align:1px; }
+  .mk-tag { display:inline-block; background:var(--pn2); border-radius:4px; padding:1px 6px; margin-right:3px; font-size:11px; }
+  .mk-tag.or { color:var(--orange); }
+  .mk-det { width:33%; min-width:280px; flex-shrink:0; background:var(--pn); padding:10px 12px; display:flex; flex-direction:column; gap:7px; }
+  .mk-det h4 { font-size:14px; margin:0; }
+  .mk-big { font-size:17px; font-weight:700; }
+  .mk-line { display:flex; justify-content:space-between; gap:8px; font-size:12px; padding:2px 0; }
+  .mk-line span:first-child { color:var(--mu); }
+  .mk-box { background:var(--pn2); border:1px solid var(--bd); border-radius:8px; padding:8px; }
+  .mk-sub { display:flex; gap:4px; flex-wrap:wrap; }
+  .mk-items { display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; }
+  .mk-it { display:flex; align-items:center; gap:6px; font-size:12px; padding:3px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mk-ico { width:20px; height:20px; border-radius:4px; background:linear-gradient(135deg,#6b5a2c,#3a3f52); flex-shrink:0; border:1px solid #4a4f60; }
+  .mk-tip { background:#0d0f14; border:1px solid #3a3f52; border-radius:6px; padding:7px 9px; font-size:11.5px; line-height:1.45; }
+  .mk-hdr { display:flex; justify-content:space-between; align-items:center; }
+  .mk-col { color:var(--mu); font-size:14px; }
+</style>
+
+<h2>Layout A, versão 2</h2>
+<p class="subtitle">As laterais ficaram maiores (filtros ~27% e detalhes ~33% da largura) e as divisórias <b>⋮</b> podem ser arrastadas; o programa lembra o tamanho que você deixar. O botão <b>⟩</b> recolhe os detalhes para a lista ganhar espaço. Dados de exemplo.</p>
+
+<div class="mk">
+  <div class="mk-top">
+    <span class="mk-tab on">Contas</span><span class="mk-tab">Tabela de valores</span><span class="mk-tab">Buscas e avisos</span>
+    <span class="mk-rate">1 bi = <b>R$ 500</b> · 1 TCC = <b>R$ 1,00</b> · atualizado há 20s · itens carregados 1.509/1.509</span>
+  </div>
+  <div class="mk-row">
+
+    <div class="mk-side">
+      <div class="mk-lbl">Buscar por nome</div>
+      <span class="mk-in" style="color:var(--mu)">nome do personagem…</span>
+      <div class="mk-lbl">Classe</div>
+      <div class="mk-chips"><span class="mk-chip on">Arqueiro</span><span class="mk-chip on">Bárbaro</span><span class="mk-chip">Mago</span><span class="mk-chip">Sacerdote</span><span class="mk-chip">Guerreiro</span><span class="mk-chip">Arcano</span><span class="mk-chip">+11</span></div>
+      <div class="mk-lbl">Preço (TCC) · Nível mínimo</div>
+      <div style="display:flex;gap:5px"><span class="mk-in" style="flex:1">0</span><span class="mk-in" style="flex:1">3.000</span><span class="mk-in" style="width:52px">105</span></div>
+      <div class="mk-lbl">Tem item</div>
+      <div class="mk-cond"><b>Cosmos</b><span class="x">✕</span>
+        <div class="f"><span class="mk-in" style="flex:1">refino ≥ +10</span><span class="mk-in" style="flex:1">em qualquer lugar ▾</span></div></div>
+      <div class="mk-cond"><b>Pedra do Demônio</b><span class="x">✕</span>
+        <div class="f"><span class="mk-in" style="flex:1">qtd ≥ 10</span><span class="mk-in" style="flex:1">engastada ▾</span></div></div>
+      <div style="color:var(--gold);font-size:12px">+ adicionar condição</div>
+      <div class="mk-lbl">Mostrar</div>
+      <div class="mk-chips"><span class="mk-chip on">só com lucro</span><span class="mk-chip">só novas (24h)</span></div>
+      <div class="mk-lbl">Ordenar por</div>
+      <span class="mk-in">Lucro (R$) ▾</span>
+      <div style="flex:1"></div>
+      <div class="mk-btn">🔔 Salvar busca e me avisar</div>
+    </div>
+
+    <div class="mk-grip" title="arraste para ajustar"></div>
+
+    <div class="mk-main">
+      <div class="mk-sum"><b>3 contas</b> batem · preço mín. 900 · mediana 1.200 TCC</div>
+      <table class="mk-t">
+        <tr><th>Conta</th><th>Classe</th><th class="num">Preço</th><th class="num">Lucro</th><th>Destaques</th></tr>
+        <tr class="sel"><td>Lunaris<span class="mk-new">NOVA</span></td><td>Arqueiro 105</td><td class="num">900</td><td class="num mk-ok">+R$ 720</td><td><span class="mk-tag or">Cosmos +10</span></td></tr>
+        <tr><td>KratosBR</td><td>Bárbaro 105</td><td class="num">1.200</td><td class="num mk-ok">+R$ 540</td><td><span class="mk-tag or">Cosmos +10</span></td></tr>
+        <tr><td>DarkHunter</td><td>Arqueiro 105</td><td class="num">1.500</td><td class="num mk-ok">+R$ 220</td><td><span class="mk-tag or">Cosmos +10</span></td></tr>
+      </table>
+    </div>
+
+    <div class="mk-grip" title="arraste para ajustar"></div>
+
+    <div class="mk-det">
+      <div class="mk-hdr"><h4>Lunaris · Arqueiro 105</h4><span class="mk-col" title="recolher">⟩</span></div>
+      <div style="color:var(--mu);font-size:11.5px">Céu Majestoso VII · anúncio visto há 3 min</div>
+      <div class="mk-box">
+        <div class="mk-line"><span>Preço</span><span>900 TCC = R$ 900</span></div>
+        <div class="mk-line"><span>Valor estimado</span><span>1,62 bi = R$ 1.620</span></div>
+        <div class="mk-big mk-ok">Lucro +R$ 720 (44%)</div>
+      </div>
+      <div class="mk-lbl">De onde vem o valor</div>
+      <div class="mk-line"><span>Cosmos +10 · equipado</span><span>3 bi · R$ 1.500</span></div>
+      <div class="mk-line"><span>12× Pedra do Demônio · engastadas</span><span>0,24 bi · R$ 120</span></div>
+      <div class="mk-sub" style="margin-top:3px"><span class="mk-chip on">Equipado</span><span class="mk-chip">Mochila</span><span class="mk-chip">Banco</span><span class="mk-chip">Cartas</span><span class="mk-chip">Mascotes</span></div>
+      <div class="mk-items">
+        <div class="mk-it"><span class="mk-ico"></span><span style="color:var(--orange)">Cosmos +10</span></div>
+        <div class="mk-it"><span class="mk-ico"></span>★★★Caçador Penado +12</div>
+        <div class="mk-it"><span class="mk-ico"></span>★★★Elmo do Ashura +11</div>
+        <div class="mk-it"><span class="mk-ico"></span>Ressonância Celestial +10</div>
+        <div class="mk-it"><span class="mk-ico"></span>★★★Capa da Ascensão +10</div>
+        <div class="mk-it"><span class="mk-ico"></span>★Armadura do Ashura +10</div>
+      </div>
+      <div class="mk-lbl">Passando o mouse num item</div>
+      <div class="mk-tip"><b style="color:#fff">★★★Caçador Penado +12</b><br>Ataque Físico 1653-2898<br><span style="color:#5fbab9">Pedra do Brilho Flamejante Ataque +130</span><br><span style="color:#8fd3ff">➜ Nível de Ataque +80 · Destreza +30</span></div>
+      <div style="display:flex;gap:6px;margin-top:auto"><div class="mk-btn" style="flex:1">Abrir no site</div><div class="mk-btn ghost" style="flex:1">Copiar link</div></div>
+    </div>
+
+  </div>
+</div>

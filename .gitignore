@@ -1,0 +1,18 @@
+# Dados locais do programa
+mercado.db
+mercado.db-*
+mercado.log*
+.janela/
+.instancia.json
+
+# Helper antigo (linha de comando)
+estado.json
+estado.tmp
+alertas.log
+
+# Rascunhos do brainstorming (os mockups aprovados ficam em docs/mockups)
+.superpowers/
+
+# Python
+__pycache__/
+*.pyc
