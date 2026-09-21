@@ -20,7 +20,7 @@ Ele substitui o `helper.py`, que continua na pasta mas deixa de ser necessário.
 - Abre com dois cliques, numa janela própria, sem abas nem barra de endereço.
 - Os filtros de classe, preço, nível, nome e Céu respondem na hora.
 - O filtro por equipamento (ex.: Cosmos +10) responde em cerca de 0,5 s, mesmo antes de o programa ter lido as contas.
-- O valor e o lucro de todas as contas ficam disponíveis depois da primeira carga (1 h a 1 h30, uma única vez). Depois disso, qualquer busca é instantânea.
+- O valor e o lucro de todas as contas ficam disponíveis depois da primeira carga (cerca de 2 h, uma única vez). Depois disso, qualquer busca é instantânea.
 - Uma conta nova é analisada, e avisada se bater com uma busca salva, em até "intervalo de consulta + ~5 s".
 
 ### Fora do escopo
@@ -110,7 +110,7 @@ A fila é preenchida nesta ordem:
 
 Uma conta só é relida quando o preço muda ou quando é anunciada de novo.
 
-**Tempo da primeira carga:** cerca de 1.500 contas × ~3,5 s ≈ 1 h a 1 h30 com a pausa padrão. O progresso aparece na barra do topo ("itens lidos 812/1.509"). A carga só avança com o programa aberto, e o que já foi lido fica salvo.
+**Tempo da primeira carga:** medido no site real, cada conta leva ~4,7 s (pausa de 2 s + download e leitura), então ~1.500 contas ≈ 2 h com a pausa padrão. O progresso aparece na barra do topo ("itens lidos 812/1.509"). A carga só avança com o programa aberto, e o que já foi lido fica salvo.
 
 ## 5. Valor de uma conta
 

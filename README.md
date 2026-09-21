@@ -18,7 +18,7 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 
 ## Primeira vez
 
-1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva de 1 h a 1 h30, num ritmo que não sobrecarrega o site. A barra no topo mostra o progresso.
+1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva por volta de 2 h com a pausa padrão de 2 s (menos se você diminuir a pausa), num ritmo que não sobrecarrega o site. O que já foi lido fica salvo: se fechar no meio, ele continua de onde parou. A barra no topo mostra o progresso.
 2. **O que é lido primeiro:**
    - contas novas ou que baixaram de preço;
    - contas que têm itens da sua tabela de valores (o programa descobre quais são pela busca do próprio site, em menos de 1 s);
