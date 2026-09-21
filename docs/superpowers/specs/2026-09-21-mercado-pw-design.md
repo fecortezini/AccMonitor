@@ -208,7 +208,20 @@ As larguras dos painéis também ficam em `config`.
 - **Tooltips:** só texto e cor são guardados e exibidos. Nenhum HTML do site é injetado na interface.
 - **Porta ou banco ocupados:** mensagem clara e o programa não abre uma segunda cópia.
 
-## 9. Testes
+## 9. Decisões tomadas durante a implementação
+
+- **Itens repetidos na página:** a seção "Cartas equipadas" repete as cartas que já estão em "Equipamento", e o boneco do topo repete o equipamento. As duas ficam de fora para não contar em dobro.
+- **Fora da soma do valor e dos filtros "em qualquer lugar":** o códice (coleção de visuais) e a recompra.
+- **Lucro só quando existe valor:** uma conta sem nenhum item da tabela aparece com "—" em vez de um lucro negativo igual ao preço.
+- **A fila se ajusta à tabela:** ao cadastrar valores ou salvar buscas, as contas não lidas que a busca do site aponta com esses itens sobem na fila na hora.
+- **Botão "Ler agora":** nos detalhes de uma conta ainda não lida, passa a conta na frente da fila.
+- **Segurança da API:** o servidor escuta só em 127.0.0.1. Cada chamada exige o token da execução (cabeçalho X-Token) e um cabeçalho Host local.
+- **Tooltips:** guardados uma vez só, compactados, reduzidos a texto e cor.
+- **Limpeza:** os itens de anúncios fora do ar há mais de 7 dias são apagados ao abrir o programa.
+- **Janela:** o programa acompanha o processo do Edge que abriu. Se esse processo terminar logo na abertura (outra janela do mesmo perfil ficou com ela), passa a valer o sinal que a página envia a cada 15 s.
+- **Atualização da interface:** ela consulta o estado a cada 3 s, mas só redesenha a lista se algo visível mudou e só recarrega os detalhes se a conta aberta mudou. O formulário de cadastro nunca é redesenhado enquanto você digita.
+
+## 10. Testes
 
 - **Testes automáticos** (`python -m unittest`) com páginas reais salvas em `tests/paginas/`: a lista, a conta 45520 e uma conta com Cosmos +12 e Pedras do Demônio. Eles cobrem:
   - leitura dos cards;
