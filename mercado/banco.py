@@ -303,17 +303,21 @@ class Banco:
             return []
         linhas = self.con.execute('SELECT * FROM conhecidos WHERE nome_norm LIKE ? LIMIT 400',
                                   (f'%{q}%',)).fetchall()
-        contas = self._contas_com([r['item_id'] for r in linhas])
-        itens = [{'item_id': r['item_id'], 'nome': r['nome'], 'tipo': r['tipo'], 'efeito': r['efeito'],
-                  'no_catalogo': bool(r['no_catalogo']), 'contas': contas.get(r['item_id'], 0)} for r in linhas]
+        contagem = self._contas_com([r['item_id'] for r in linhas])
+        itens = []
+        for r in linhas:
+            contas, unidades = contagem.get(r['item_id'], (0, 0))
+            itens.append({'item_id': r['item_id'], 'nome': r['nome'], 'tipo': r['tipo'], 'efeito': r['efeito'],
+                          'no_catalogo': bool(r['no_catalogo']), 'contas': contas, 'unidades': unidades})
         itens.sort(key=lambda it: (not norm(it['nome']).startswith(q), -it['contas'], len(it['nome'])))
         return itens[:limite]
 
     def _contas_com(self, item_ids, refino_min=0):
+        """{item_id: (contas ativas que têm, unidades somadas)}."""
         if not item_ids:
             return {}
-        return {r[0]: r[1] for r in self.con.execute(
-            f'SELECT i.item_id, COUNT(DISTINCT i.anuncio_id) FROM itens i JOIN anuncios a ON a.id = i.anuncio_id '
+        return {r[0]: (r[1], r[2]) for r in self.con.execute(
+            f'SELECT i.item_id, COUNT(DISTINCT i.anuncio_id), SUM(i.qtd) FROM itens i JOIN anuncios a ON a.id = i.anuncio_id '
             f'WHERE a.ativo = 1 AND i.secao NOT IN ({_FORA}) AND i.refino >= ? '
             f'AND i.item_id IN ({_marcadores(len(item_ids))}) GROUP BY i.item_id', (refino_min, *item_ids))}
 
@@ -406,8 +410,9 @@ class Banco:
                  'lucro_rs': None, 'lucro_pct': None}
         if lida and kk is not None:
             valor_rs, preco_rs, lucro_rs, pct = valor.lucro(kk, r['preco'], cfg['rs_por_bi'], cfg['rs_por_tcc'])
-            dados.update(valor_kk=kk, valor_rs=valor_rs, preco_rs=preco_rs, lucro_rs=lucro_rs,
-                         lucro_pct=pct if valor_rs > 0 else None)
+            dados.update(valor_kk=kk, valor_rs=valor_rs, preco_rs=preco_rs)
+            if kk > 0:  # sem nenhum item da tabela não há o que comparar com o preço
+                dados.update(lucro_rs=lucro_rs, lucro_pct=pct)
         return dados
 
     # -------------------------------------------------------------- busca
@@ -457,7 +462,7 @@ class Banco:
                 lista = ','.join(str(int(i)) for i in site) or 'NULL'
                 conds.append(f'((a.itens_lidos_em IS NOT NULL AND a.id IN ({sub})) '
                              f'OR (a.itens_lidos_em IS NULL AND a.id IN ({lista})))')
-        lucro_sql = 'CASE WHEN a.valor_kk IS NULL THEN NULL ELSE a.valor_kk / :kk_bi * :bi - a.preco * :tcc END'
+        lucro_sql = 'CASE WHEN a.valor_kk > 0 THEN a.valor_kk / :kk_bi * :bi - a.preco * :tcc END'
         if f.get('so_lucro'):
             conds.append(f'({lucro_sql}) > 0')
         ordem = ORDENS.get(f.get('ordem'), ORDENS['lucro_rs'])
@@ -508,16 +513,17 @@ class Banco:
         saida = []
         for r in linhas:
             if r['item_id'] is not None:
-                contas = self._contas_com([r['item_id']], r['refino_min']).get(r['item_id'], 0)
+                contas, unidades = self._contas_com([r['item_id']], r['refino_min']).get(r['item_id'], (0, 0))
             else:
-                contas = self.con.execute(
-                    f'SELECT COUNT(DISTINCT i.anuncio_id) FROM itens i JOIN anuncios a ON a.id = i.anuncio_id '
+                contas, unidades = self.con.execute(
+                    f'SELECT COUNT(DISTINCT i.anuncio_id), COALESCE(SUM(i.qtd), 0) FROM itens i '
+                    f'JOIN anuncios a ON a.id = i.anuncio_id '
                     f'WHERE a.ativo = 1 AND i.secao NOT IN ({_FORA}) AND i.nome_norm = ? AND i.refino >= ?',
-                    (r['nome_norm'], r['refino_min'])).fetchone()[0]
+                    (r['nome_norm'], r['refino_min'])).fetchone()
             saida.append({'id': r['id'], 'item_id': r['item_id'], 'nome': r['nome'], 'refino_min': r['refino_min'],
                           'valor_kk': r['valor_kk'], 'valor_rs': valor.kk_para_rs(r['valor_kk'], cfg['rs_por_bi']),
-                          'tipo': r['tipo'] or 'item', 'efeito': r['efeito'] or '',
-                          'visto': r['item_id'] is not None, 'contas': contas})
+                          'tipo': r['tipo'] or 'item', 'efeito': r['efeito'] or '', 'no_catalogo': bool(r['no_catalogo']),
+                          'visto': r['item_id'] is not None, 'contas': contas, 'unidades': unidades})
         return saida
 
     def salvar_valor(self, dados, valor_id=None):

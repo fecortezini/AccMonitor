@@ -8,6 +8,7 @@ Ordem da fila (docs/superpowers/specs/2026-09-21-mercado-pw-design.md, seção 4
 import heapq
 import itertools
 import logging
+import queue
 import threading
 import time
 from datetime import datetime, timedelta
@@ -85,6 +86,7 @@ class Coletor(threading.Thread):
         self._cache_site = {}
         self._trava_site = threading.Lock()
         self._catalogo = None
+        self._pedidos = queue.SimpleQueue()  # contas pedidas pela interface ("Ler agora")
 
     # -------------------------------------------------------------- controle
 
@@ -95,6 +97,19 @@ class Coletor(threading.Thread):
     def consultar_agora(self):
         self._proxima_lista = 0.0
         self._acordar.set()
+
+    def ler_agora(self, rid):
+        """Pedido da interface: passa a conta para o começo da fila (chamado de outra thread)."""
+        self._pedidos.put(int(rid))
+        self._acordar.set()
+
+    def repriorizar(self):
+        """A tabela de valores ou as buscas mudaram: contas com esses itens sobem na fila."""
+        self._pedidos.put('repriorizar')
+        self._acordar.set()
+
+    def posicao_na_fila(self, rid):
+        return rid in self.fila
 
     def run(self):
         while not self._parar.is_set():
@@ -114,6 +129,15 @@ class Coletor(threading.Thread):
         if agora >= self._proxima_lista:
             self.consultar_lista()
             self._proxima_lista = time.monotonic() + cfg['intervalo_s']
+        while not self._pedidos.empty():
+            pedido = self._pedidos.get()
+            if pedido == 'repriorizar':
+                prioritarios = self._ids_prioritarios()
+                for rid in [c['id'] for c in self.banco.contas_para_ler() if c['id'] in prioritarios]:
+                    self.fila.colocar(rid, MEDIA)
+            else:
+                self._falhas.pop(pedido, None)
+                self.fila.colocar(pedido, ALTA)
         if not self.fila:
             self.preencher_fila()
         pronto = self._ultimo_detalhe + cfg['pausa_s']

@@ -93,6 +93,13 @@ class Consulta(BaseColetor):
         self.assertEqual(self.site.buscas, [((COSMOS,), None)])
         self.assertIn(self.coletor.fila.tirar(), {231216, 3152})
 
+    def test_novo_valor_sobe_contas_na_fila(self):
+        self.coletor.preencher_fila()  # tudo em prioridade baixa: ainda não há valores
+        self.banco.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'valor_kk': 3000})
+        self.coletor.repriorizar()
+        self.coletor.passo()  # processa o pedido e lê a primeira da fila
+        self.assertIn(self.site.lidas[0], {231216, 3152})
+
     def test_site_fora_do_ar(self):
         self.site.fora_do_ar = True
         self.coletor.consultar_lista()

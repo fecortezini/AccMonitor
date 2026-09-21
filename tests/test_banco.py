@@ -150,6 +150,11 @@ class Buscar(BaseBanco):
         todas = self.banco.buscar({'ordem': 'lucro_rs'})['contas']
         self.assertEqual(todas[0]['id'], 231216)  # quem tem lucro vem antes de quem não foi lida
 
+    def test_conta_sem_itens_da_tabela_nao_tem_lucro(self):
+        self.banco.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'valor_kk': 3000})
+        conta = self.banco.buscar({'nome': 'memoryzito'})['contas'][0]
+        self.assertEqual((conta['valor_rs'], conta['lucro_rs'], conta['lucro_pct']), (0, None, None))
+
     def test_resumo_da_busca(self):
         r = self.banco.buscar({'classes': ['Arqueiro'], 'nome': 'memoryzito'})
         self.assertEqual((r['batem'], r['preco_min'], r['preco_mediana']), (1, 2400, 2400))
