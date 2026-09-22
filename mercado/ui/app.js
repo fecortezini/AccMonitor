@@ -102,7 +102,7 @@ const FILTROS_PADRAO = { nome: '', classes: [], preco_min: null, preco_max: null
   itens: [], so_lucro: false, so_novas: false, ordem: 'lucro_rs' };
 const S = {
   aba: 'contas', estado: null, versao: null, versaoCarregada: {},
-  config: null, filtros: { ...FILTROS_PADRAO, ...lembrar('filtros', {}) },
+  config: null, filtros: { ...structuredClone(FILTROS_PADRAO), ...lembrar('filtros', {}) },  // cópia: "Limpar" volta ao padrão
   resultado: null, limite: 300, sel: null, conta: null, subAba: null,
   valores: [], resumo: null, form: null, confirmando: null,
   buscas: [], avisos: [], buscaAtual: lembrar('buscaAtual', null),
@@ -235,6 +235,8 @@ const SECAO_DO_ONDE = { equipado: 'equipado', mochila: 'inventario', banco: 'ban
   engastada: 'engastada', mascotes: 'mascotes' };
 const FORA_DA_BUSCA = new Set(['codice', 'recompra']);
 
+// As condições ficam na ordem em que os itens foram escolhidos (a de importância para quem busca), e as colunas
+// da lista e a aba Pesquisados seguem essa ordem. Ela não muda quem bate nem o preço por unidade (soma de todos).
 function desenharCondicoes() {
   $('#f-itens').innerHTML = S.filtros.itens.map((c, i) => `
     <div class="condicao" data-i="${i}">

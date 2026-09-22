@@ -1,7 +1,10 @@
 import dataclasses
 import shutil
 import tempfile
+import threading
+import time
 import unittest
+import urllib.error
 from pathlib import Path
 
 from mercado import site
@@ -25,10 +28,22 @@ class SiteFalso:
         self.lidas = []
         self.buscas = []
         self.site_ids = {231216, 3152}
+        self.recusar = set()        # urls que o site responde com HTTP 429
+        self.demora = 0             # segundos de cada download
+        self.baixando = self.max_baixando = 0
+        self._trava = threading.Lock()
 
     def baixar(self, url):
         if self.fora_do_ar:
             raise OSError('sem rede')
+        if url in self.recusar:
+            raise urllib.error.HTTPError(url, 429, 'Too Many Requests', {}, None)
+        with self._trava:
+            self.baixando += 1
+            self.max_baixando = max(self.max_baixando, self.baixando)
+        time.sleep(self.demora)
+        with self._trava:
+            self.baixando -= 1
         return url
 
     def ler_lista(self, _):
@@ -123,6 +138,38 @@ class Consulta(BaseColetor):
         self.assertEqual(self.site.lidas.count(45520), 3)
         self.coletor.preencher_fila()
         self.assertNotIn(45520, self.coletor.fila)
+
+
+class LeiturasSimultaneas(BaseColetor):
+    def enfileirar(self, *ids):
+        for rid in ids:
+            self.coletor.fila.colocar(rid, ALTA)
+
+    def test_uma_por_vez_por_padrao(self):
+        self.enfileirar(45520, 231216)
+        self.coletor.ler_proxima()
+        self.assertEqual(self.site.lidas, [45520])
+
+    def test_duas_ao_mesmo_tempo(self):
+        self.banco.salvar_config({'leituras_simultaneas': 2})
+        self.site.demora = 0.3
+        self.enfileirar(45520, 231216, 3152)
+        self.coletor.ler_proxima()
+        self.assertEqual(sorted(self.site.lidas), [45520, 231216])
+        self.assertEqual(self.site.max_baixando, 2)  # os dois downloads ao mesmo tempo
+        self.assertTrue(all(self.banco.anuncio(rid)['itens_lidos_em'] for rid in (45520, 231216)))
+        self.assertEqual((len(self.coletor.fila), self.coletor.estado.fila), (1, 1))
+        self.assertFalse(self.coletor.posicao_na_fila(45520))
+
+    def test_site_recusou_volta_para_uma_por_vez(self):
+        self.banco.salvar_config({'leituras_simultaneas': 2})
+        self.site.recusar = {'conta/45520'}
+        self.enfileirar(45520, 231216)
+        self.coletor.ler_proxima()
+        self.assertEqual(self.banco.config()['leituras_simultaneas'], 1)
+        self.assertIn('recusou', self.coletor.estado.erro)
+        self.assertTrue(self.banco.anuncio(231216)['itens_lidos_em'])  # a outra conta do par foi lida
+        self.assertIn(45520, self.coletor.fila)  # a recusada volta para a fila
 
 
 class Avisos(BaseColetor):

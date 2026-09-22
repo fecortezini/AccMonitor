@@ -1,5 +1,11 @@
+import gzip
 import re
+import threading
+import time
 import unittest
+import urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
 from mercado import site
 from tests import paginas
@@ -71,6 +77,76 @@ class LerConta(unittest.TestCase):
 
     def test_pagina_sem_itens(self):
         self.assertEqual(site.ler_conta('<html><body>anúncio removido</body></html>'), [])
+
+
+class _SiteLocal(BaseHTTPRequestHandler):
+    """Imita o site: responde em gzip, mantém a conexão aberta e fecha a que fica parada."""
+    protocol_version = 'HTTP/1.1'
+    timeout = 0.3  # o site real fecha a conexão parada depois de alguns segundos
+
+    def setup(self):
+        super().setup()
+        self.server.conexoes += 1
+
+    def log_message(self, formato, *args):
+        pass
+
+    def do_GET(self):
+        if self.path == '/volta':
+            self.responder(302, b'', {'Location': '/pagina'})
+        elif self.path == '/nada':
+            self.responder(404, b'nada aqui')
+        elif self.path == '/fecha':
+            self.close_connection = True
+            self.responder(200, gzip.compress('<p>até logo</p>'.encode()), {'Content-Encoding': 'gzip', 'Connection': 'close'})
+        else:
+            self.responder(200, gzip.compress('<p>olá</p>'.encode()), {'Content-Encoding': 'gzip'})
+
+    def responder(self, status, corpo, extras=None):
+        self.send_response(status)
+        for k, v in {'Content-Length': str(len(corpo)), **(extras or {})}.items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(corpo)
+
+
+class Baixar(unittest.TestCase):
+    def setUp(self):
+        self.servidor = ThreadingHTTPServer(('127.0.0.1', 0), _SiteLocal)
+        self.servidor.daemon_threads = True
+        self.servidor.conexoes = 0
+        threading.Thread(target=self.servidor.serve_forever, daemon=True).start()
+        self.url = f'http://127.0.0.1:{self.servidor.server_address[1]}'
+        mock.patch.object(site, '_PROXY', None).start()
+        self.addCleanup(mock.patch.stopall)
+        self.addCleanup(self.fechar)
+
+    def fechar(self):
+        if getattr(site._conexao, 'con', None) is not None:
+            site._conexao.con.close()
+            site._conexao.con = None
+        self.servidor.shutdown()
+        self.servidor.server_close()
+
+    def test_reaproveita_a_conexao(self):
+        self.assertEqual([site.baixar(self.url + '/pagina') for _ in range(3)], ['<p>olá</p>'] * 3)
+        self.assertEqual(self.servidor.conexoes, 1)
+
+    def test_redirecionamento_e_erro(self):
+        self.assertEqual(site.baixar(self.url + '/volta'), '<p>olá</p>')
+        with self.assertRaises(urllib.error.HTTPError) as erro:
+            site.baixar(self.url + '/nada')
+        self.assertEqual(erro.exception.code, 404)
+        self.assertEqual(site.baixar(self.url + '/pagina'), '<p>olá</p>')
+        self.assertEqual(self.servidor.conexoes, 1)
+
+    def test_conexao_fechada_pelo_site(self):
+        site.baixar(self.url + '/pagina')
+        time.sleep(0.8)  # parada: o site fecha a conexão
+        self.assertEqual(site.baixar(self.url + '/pagina'), '<p>olá</p>')
+        self.assertEqual(site.baixar(self.url + '/fecha'), '<p>até logo</p>')  # "Connection: close"
+        self.assertEqual(site.baixar(self.url + '/pagina'), '<p>olá</p>')
+        self.assertEqual(self.servidor.conexoes, 3)
 
 
 class Auxiliares(unittest.TestCase):

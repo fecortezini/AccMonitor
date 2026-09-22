@@ -5,9 +5,12 @@ página de cada conta, o catálogo de equipamentos e a busca avançada do própr
 """
 import gzip
 import html
+import http.client
 import json
 import re
+import threading
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
@@ -50,7 +53,66 @@ def norm(texto):
     return re.sub(r'\s+', ' ', texto).strip().lower()
 
 
+_PROXY = urllib.request.getproxies().get('https')  # com proxy configurado no Windows, baixa pelo urllib
+_conexao = threading.local()                        # conexão de cada thread com o site, reaproveitada
+
+
 def baixar(url, timeout=40):
+    """Texto da página.
+
+    Reaproveita a conexão da página anterior: abrir uma conexão segura com o site leva
+    ~0,6 s, quase o tempo que o servidor leva para montar a página de uma conta.
+    """
+    if _PROXY:
+        return _baixar_urllib(url, timeout)
+    for _ in range(5):  # segue até 5 redirecionamentos, como o urllib
+        resp, dados = _pedir(url, timeout)
+        destino = resp.getheader('Location')
+        if resp.status in (301, 302, 303, 307, 308) and destino:
+            url = urllib.parse.urljoin(url, destino)
+            continue
+        if resp.status >= 400:
+            raise urllib.error.HTTPError(url, resp.status, resp.reason, resp.headers, None)
+        if resp.getheader('Content-Encoding') == 'gzip':
+            dados = gzip.decompress(dados)
+        return dados.decode('utf-8', 'replace')
+    raise urllib.error.URLError(f'redirecionamentos demais: {url}')
+
+
+def _pedir(url, timeout):
+    """(resposta, corpo) de um GET na conexão guardada desta thread, ou numa nova."""
+    partes = urllib.parse.urlsplit(url)
+    caminho = (partes.path or '/') + (f'?{partes.query}' if partes.query else '')
+    chave = (partes.scheme, partes.netloc)
+    for tentativa in (1, 2):
+        con = getattr(_conexao, 'con', None)
+        reaproveitada = con is not None and _conexao.chave == chave
+        if not reaproveitada:
+            if con is not None:
+                con.close()
+            classe = http.client.HTTPSConnection if partes.scheme == 'https' else http.client.HTTPConnection
+            con = _conexao.con = classe(partes.netloc, timeout=timeout)
+            _conexao.chave = chave
+        elif con.sock is not None:
+            con.sock.settimeout(timeout)
+        try:
+            con.request('GET', caminho, headers={'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip'})
+            resp = con.getresponse()
+            dados = resp.read()
+        except Exception as e:
+            con.close()
+            _conexao.con = None
+            # o site fecha a conexão que fica parada; nesse caso tenta de novo uma vez, numa conexão nova
+            if reaproveitada and tentativa == 1 and isinstance(e, ConnectionError):
+                continue
+            raise
+        if resp.will_close:
+            con.close()
+            _conexao.con = None
+        return resp, dados
+
+
+def _baixar_urllib(url, timeout):
     req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip'})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         dados = resp.read()

@@ -32,6 +32,17 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
   - ao adicionar o primeiro item, a lista já ordena por quem tem mais;
   - os detalhes ganham a aba Pesquisados.
 - **Ordenar pela coluna (21/09):** clicar no título Preço, Por un., Pesquisados, Valor ou Lucro ordena a lista.
+- **Ordem dos itens (22/09):**
+  - os itens ficam na ordem em que são escolhidos, que serve para indicar a importância. As colunas da lista e a aba Pesquisados seguem essa ordem. A ordem alfabética foi testada e descartada por esconder essa escolha;
+  - essa ordem não muda quais contas batem nem o Por un., que usa a soma de todos os itens. Um teste garante isso;
+  - corrigido o "Limpar" numa janela aberta sem filtros guardados: ele trazia de volta os itens em vez de limpar.
+- **Leitura mais rápida (22/09):** a conexão com o site é reaproveitada de uma página para a próxima, em vez de abrir uma nova a cada conta. No site real, cada página caiu de ~1,4 s para ~0,85 s. Com um proxy configurado no Windows, o programa continua abrindo uma conexão por página.
+  - **Onde vai o tempo de cada conta (medido):** ~1 s o servidor montando a página, ~0,6 s de transferência, ~0,1 a 0,2 s para ler o HTML e ~40 ms no banco, mais a pausa configurada.
+- **Contas lidas ao mesmo tempo (22/09):** nova opção nas ⚙ Configurações, 1 (padrão) ou 2.
+  - **Como funciona:** com 2, o coletor baixa as duas próximas contas da fila juntas (a segunda numa thread ajudante, com a própria conexão) e faz a pausa depois das duas.
+  - **Medido no site real, com pausa de 1 s:** 2,2 s por conta lendo uma por vez e 1,3 s lendo duas.
+  - **Se o site recusar:** com a opção em 2, uma resposta 403, 429 ou 503 faz ela voltar sozinha para 1, e aparece um aviso no topo.
+  - **Risco de bloqueio (avaliado em 22/09):** o site não tem `robots.txt`, serviço anti-robô nem cabeçalhos de limite de acesso, e não recusou nenhuma das ~1.260 contas lidas até então. Com 2, são ~45 páginas por minuto: dá para notar nos registros do servidor, mas é bem menos do que as proteções automáticas costumam barrar.
 - **Lance mínimo (22/09):** embaixo do preço, na lista e nos detalhes, aparece pequeno o lance mínimo: 70% do preço pedido, fixo e arredondado para cima.
 - **Aviso por preço (21/09):** a janela "Salvar busca" tem "só avisar se o preço for de até … TCC" (aceita "5k"), além do lucro mínimo.
 - **Detalhes (21/09):** "De onde vem o valor" foi para o fim do painel, depois dos itens e dos botões.
@@ -39,8 +50,8 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Busca por parte do nome (21/09):** o "Tem item" aceita parte do nome, inclusive de itens ainda não vistos nas contas lidas. Exemplo: "pedra do dem" no começo da carga, quando só as contas baratas foram lidas. Outro exemplo: "relíquia maravilha", que soma as três relíquias.
 
 **Testes:**
-- **Automáticos:** 74, com páginas reais do site salvas. Todos passam.
-- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Rodou sem erros na primeira versão. Depois das melhorias, as telas foram conferidas num Edge invisível com um script avulso, porque o PC onde foram feitas não tem Node. Esse script cobriu os passos do teste antigo e os novos, sem erros.
+- **Automáticos:** 81, com páginas reais do site salvas. Todos passam.
+- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Rodou sem erros na primeira versão. Depois das melhorias, as telas foram conferidas num Edge invisível com um script avulso, porque o PC onde foram feitas não tem Node. Esse script cobriu os passos do teste antigo e os novos, sem erros. Em 22/09 o teste rodou de novo, com Node, e passou sem erros.
 - **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
 - **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
 

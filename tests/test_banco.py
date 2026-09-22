@@ -1,4 +1,5 @@
 import dataclasses
+import itertools
 import shutil
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from tests import paginas
 
 COSMOS, DEMONIO = site.COSMOS_ID, 38154
 PERFEITA, IMORTAL = 5639, 11208  # Pedra Perfeita e Pedra Imortal: as duas contas salvas têm
+AMULETO = 47234  # Amuleto da Alma Perdida: 45520 tem 255 e 231216 tem 9.289
 
 
 class BaseBanco(unittest.TestCase):
@@ -191,6 +193,22 @@ class Buscar(BaseBanco):
         # sem condição de item essas ordens não se aplicam e vale a ordem padrão
         self.assertEqual(len(self.ids({'ordem': 'itens'})), len(self.lista))
 
+    def test_ordem_das_condicoes_nao_importa(self):
+        # Em qualquer ordem dos itens, a lista e as unidades de cada item são as mesmas, e o preço por unidade
+        # usa a soma de todos: 45520 sai a 2.400 ÷ 55.115 e 231216 a 15.000 ÷ 26.318 TCC. Se valesse só o
+        # primeiro item, com o Amuleto na frente 231216 viria antes (15.000 ÷ 9.289 contra 2.400 ÷ 255).
+        nomes = {PERFEITA: 'Pedra Perfeita', IMORTAL: 'Pedra Imortal', AMULETO: 'Amuleto da Alma Perdida'}
+        esperado = [(45520, {PERFEITA: 48004, IMORTAL: 6856, AMULETO: 255}),
+                    (231216, {PERFEITA: 2310, IMORTAL: 14719, AMULETO: 9289})]
+        for ordem_itens in itertools.permutations(nomes):
+            itens = [{'item_id': i, 'nome': nomes[i]} for i in ordem_itens]
+            for ordem in ('preco_item', 'itens'):
+                contas = self.banco.buscar({'itens': itens, 'ordem': ordem})['contas']
+                self.assertEqual([(c['id'], dict(zip(ordem_itens, c['qtd_busca']))) for c in contas], esperado,
+                                 (ordem_itens, ordem))
+            # "Mais <item>" segue o item, em qualquer posição
+            self.assertEqual(self.ids({'itens': itens, 'ordem': f'item:{ordem_itens.index(AMULETO)}'}), [231216, 45520])
+
     def test_contas_a_confirmar_vao_para_o_fim(self):
         # 3152 (20.000 TCC) e 1856 (15.000 TCC) ainda não foram lidas: não se sabe quanto têm
         filtro = {'itens': [{'item_id': COSMOS, 'refino_min': 12}], 'ordem': 'itens'}
@@ -212,8 +230,11 @@ class Outros(BaseBanco):
         self.assertIn(COSMOS, self.banco.ids_no_catalogo())
 
     def test_config_com_limites(self):
-        cfg = self.banco.salvar_config({'intervalo_s': 5, 'rs_por_tcc': '0,85', 'aviso_bipes': False, 'x': 1})
-        self.assertEqual((cfg['intervalo_s'], cfg['rs_por_tcc'], cfg['aviso_bipes']), (30, 0.85, False))
+        self.assertEqual(self.banco.config()['leituras_simultaneas'], 1)
+        cfg = self.banco.salvar_config({'intervalo_s': 5, 'rs_por_tcc': '0,85', 'aviso_bipes': False, 'x': 1,
+                                        'leituras_simultaneas': 5})
+        self.assertEqual((cfg['intervalo_s'], cfg['rs_por_tcc'], cfg['aviso_bipes'], cfg['leituras_simultaneas']),
+                         (30, 0.85, False, 2))
         self.assertNotIn('x', cfg)
 
     def test_buscas_e_avisos(self):

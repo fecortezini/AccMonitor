@@ -66,13 +66,14 @@ CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 """
 
 PADROES = {
-    'intervalo_s': 60, 'pausa_s': 2, 'rs_por_bi': 500.0, 'rs_por_tcc': 1.0,
+    'intervalo_s': 60, 'pausa_s': 2, 'leituras_simultaneas': 1, 'rs_por_bi': 500.0, 'rs_por_tcc': 1.0,
     'aviso_windows': True, 'aviso_bipes': True, 'aviso_navegador': False,
     'telegram_token': '', 'telegram_chat': '', 'discord_webhook': '',
     'largura_filtros': 27, 'largura_detalhes': 33, 'detalhes_recolhidos': False,
 }
-LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'rs_por_bi': (0.01, 10_000_000),
-           'rs_por_tcc': (0.01, 100_000), 'largura_filtros': (15, 45), 'largura_detalhes': (20, 50)}
+LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'leituras_simultaneas': (1, 2),
+           'rs_por_bi': (0.01, 10_000_000), 'rs_por_tcc': (0.01, 100_000),
+           'largura_filtros': (15, 45), 'largura_detalhes': (20, 50)}
 
 # Campo "onde" das condições de item -> seções do banco (None = qualquer lugar da conta)
 ONDE = {'equipado': ('equipado',), 'mochila': ('inventario',), 'banco': ('banco',),

@@ -100,7 +100,7 @@ Se o programa já estiver aberto, um segundo clique só abre outra janela para a
 3. Atualiza `anuncios`. Anúncios que sumiram ficam com `ativo = 0`.
 4. Anúncios novos, reativados ou com preço menor entram na fila com **prioridade alta**.
 
-**Fila de leitura** (uma conta por vez, com `pausa_s` entre páginas, padrão 2 s, mínimo 1 s). Para cada conta, lê os itens, grava, recalcula o valor e confere as buscas com aviso ligado (seção 7).
+**Fila de leitura** (uma conta por vez, com `pausa_s` entre páginas, padrão 2 s, mínimo 1 s). Para cada conta, lê os itens, grava, recalcula o valor e confere as buscas com aviso ligado (seção 7). *Depois (22/09):* com `leituras_simultaneas` em 2, as duas próximas contas são baixadas ao mesmo tempo, e a pausa vem depois das duas. Se o site responder 403, 429 ou 503, a opção volta sozinha para 1.
 
 A fila é preenchida nesta ordem:
 
@@ -180,6 +180,7 @@ Tema escuro, fonte Segoe UI Variable, ícones reais do jogo, conforme os mockups
 |---|---|
 | `intervalo_s` | 60 (mínimo 30) |
 | `pausa_s` | 2 (mínimo 1) |
+| `leituras_simultaneas` | 1 (máximo 2) |
 | `rs_por_bi` | 500,00 |
 | `rs_por_tcc` | 1,00 |
 | `aviso_windows` | ligado |

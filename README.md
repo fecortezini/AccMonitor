@@ -18,7 +18,7 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 
 ## Primeira vez
 
-1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva por volta de 2 h com a pausa padrão de 2 s (menos se você diminuir a pausa), num ritmo que não sobrecarrega o site. O que já foi lido fica salvo: se fechar no meio, ele continua de onde parou. A barra no topo mostra o progresso.
+1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva por volta de 1 h 45 com as configurações padrão, num ritmo que não sobrecarrega o site. Com a pausa de 1 s e 2 contas lidas ao mesmo tempo (⚙ Configurações), cai para uns 45 min. O que já foi lido fica salvo: se fechar no meio, ele continua de onde parou. A barra no topo mostra o progresso.
 2. **O que é lido primeiro:**
    - contas novas ou que baixaram de preço;
    - contas que têm itens da sua tabela de valores (o programa descobre quais são pela busca do próprio site, em menos de 1 s);
@@ -32,7 +32,8 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 - **Filtros:** nome, classes, faixa de preço (TCC), nível mínimo, Céu e condições de item (refino mínimo, quantidade mínima e onde o item está: equipado, mochila, banco, cartas, engastado, mascotes). As sugestões do "Tem item" trazem os equipamentos do site e os itens já vistos nas contas lidas. Qualquer item também pode ser buscado por parte do nome, inclusive os que ainda não apareceram, como uma pedra engastada rara. Por exemplo, "pedra do dem", ou "relíquia maravilha" para juntar as três relíquias numa condição. As contas que tiverem o item aparecem conforme forem lidas.
 - **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes). Contas que ainda não foram lidas, mas que a busca do site diz terem o item, aparecem como **A CONFIRMAR**.
 - **Itens pesquisados:** com condições de item, a lista ganha as colunas **Por un.** e **Pesquisados**:
-  - Por un. é o preço dividido pela soma dos itens pesquisados (TCC por unidade);
+  - Por un. é o preço dividido pela soma de todos os itens pesquisados (TCC por unidade);
+  - os itens ficam na ordem em que você os escolhe (por exemplo, do mais importante para o menos importante), e as colunas e a aba Pesquisados seguem essa ordem. Ela não muda quais contas batem nem o Por un.;
   - Pesquisados mostra a soma e quantas unidades de cada item a conta tem, cada número na sua coluna;
   - a contagem junta todas as pilhas e respeita o refino mínimo e o "onde" de cada condição;
   - novas ordenações: "Mais itens pesquisados" (a soma), "Mais …" (um item específico) e "Menor preço por unidade";
@@ -57,7 +58,8 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 | Opção | O que faz |
 |---|---|
 | Intervalo de consulta | De quanto em quanto tempo a lista é consultada. Padrão 60 s, mínimo 30 s. |
-| Pausa entre contas | Intervalo entre a leitura de uma conta e a próxima. |
+| Pausa entre contas | Intervalo entre a leitura de uma conta e a próxima. Padrão 2 s, mínimo 1 s. |
+| Contas lidas ao mesmo tempo | 1 (padrão) ou 2. Com 2, a carga inicial leva ~40% menos tempo, mas o site recebe o dobro de acessos. Se ele recusar algum (HTTP 403, 429 ou 503), o programa volta sozinho para 1 e avisa no topo. |
 | Cotações | Quanto vale 1 bi e 1 TCC em reais. Padrão: 1 bi = R$ 500 e 1 TCC = R$ 1. |
 | Avisos | Notificação do Windows (clicar abre o anúncio para comprar), bipes (tocam mesmo com o "Não perturbe" ligado, por exemplo durante o jogo), abrir no navegador, Telegram e Discord. O botão "Testar avisos" confere se estão funcionando. |
 

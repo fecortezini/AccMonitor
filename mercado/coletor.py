@@ -11,6 +11,7 @@ import logging
 import queue
 import threading
 import time
+import urllib.error
 from datetime import datetime, timedelta
 
 from . import avisos, site as site_padrao
@@ -21,6 +22,7 @@ ALTA, MEDIA, BAIXA = 0, 1, 2
 TENTATIVAS = 3              # leituras que falham antes de desistir da conta (até o preço mudar)
 CACHE_SITE_S = 120          # validade das respostas da busca do site
 CATALOGO_H = 24             # o catálogo do site é baixado de novo depois disso
+RECUSAS = {403, 429, 503}   # respostas do site que desligam as leituras simultâneas
 
 
 class Fila:
@@ -47,6 +49,20 @@ class Fila:
 
     def __contains__(self, rid):
         return rid in self._prio
+
+
+class _Ajudante(threading.Thread):
+    """Lê contas junto com o coletor, na sua própria conexão com o site (ver site.baixar)."""
+
+    def __init__(self, ler):
+        super().__init__(daemon=True, name='coletor-ajudante')
+        self.ler = ler
+        self.pedidos, self.respostas = queue.SimpleQueue(), queue.SimpleQueue()
+        self.start()
+
+    def run(self):
+        while True:
+            self.respostas.put(self.ler(self.pedidos.get()))
 
 
 class Estado:
@@ -87,6 +103,8 @@ class Coletor(threading.Thread):
         self._trava_site = threading.Lock()
         self._catalogo = None
         self._pedidos = queue.SimpleQueue()  # contas pedidas pela interface ("Ler agora")
+        self._ajudantes = []        # leem as outras contas quando há leituras simultâneas
+        self._lendo = set()         # contas sendo lidas agora
 
     # -------------------------------------------------------------- controle
 
@@ -109,7 +127,7 @@ class Coletor(threading.Thread):
         self._acordar.set()
 
     def posicao_na_fila(self, rid):
-        return rid in self.fila
+        return rid in self.fila or rid in self._lendo
 
     def run(self):
         while not self._parar.is_set():
@@ -225,22 +243,55 @@ class Coletor(threading.Thread):
         return self._busca_site(('itens', tuple(itens)), lambda: self.site.busca_site(itens)) or set()
 
     def ler_proxima(self):
-        rid = self.fila.tirar()
+        """Lê a próxima conta da fila ou, com "contas lidas ao mesmo tempo" em 2, as duas próximas juntas."""
+        simultaneas = self.banco.config()['leituras_simultaneas']
+        lote = []
+        while len(lote) < simultaneas and (rid := self.fila.tirar()) is not None:
+            anuncio = self.banco.anuncio(rid)
+            if anuncio and anuncio['ativo']:
+                lote.append(anuncio)
+            else:
+                self._motivos.pop(rid, None)
         self.estado.fila = len(self.fila)
-        anuncio = self.banco.anuncio(rid) if rid is not None else None
-        if not anuncio or not anuncio['ativo']:
-            self._motivos.pop(rid, None)
+        if not lote:
             return
-        self.estado.lendo = rid
+        self._lendo = {a['id'] for a in lote}
+        self.estado.lendo = lote[0]['id']
         try:
-            itens = self.site.ler_conta(self.site.baixar(self.site.URL_CONTA.format(rid)))
-        except Exception as e:
-            log.warning('Falha ao ler a conta %s: %s', rid, e)
-            itens = None
-            self._falha('Sem conexão com o site.', conexao=True)
+            resultados = self._ler_lote([a['id'] for a in lote])
         finally:
             self._ultimo_detalhe = time.monotonic()
             self.estado.lendo = None
+            self._lendo = set()
+        for anuncio, (itens, erro) in zip(lote, resultados):
+            self._guardar(anuncio, itens, erro, simultaneas)
+
+    def _ler_lote(self, ids):
+        """[(itens, erro)] de cada conta: a primeira nesta thread e as outras nos ajudantes, ao mesmo tempo."""
+        while len(self._ajudantes) < len(ids) - 1:
+            self._ajudantes.append(_Ajudante(self._ler))
+        for ajudante, rid in zip(self._ajudantes, ids[1:]):
+            ajudante.pedidos.put(rid)
+        primeira = self._ler(ids[0])
+        return [primeira] + [ajudante.respostas.get() for ajudante in self._ajudantes[:len(ids) - 1]]
+
+    def _ler(self, rid):
+        try:
+            return self.site.ler_conta(self.site.baixar(self.site.URL_CONTA.format(rid))), None
+        except Exception as e:
+            return None, e
+
+    def _guardar(self, anuncio, itens, erro, simultaneas):
+        rid = anuncio['id']
+        if erro is not None:
+            log.warning('Falha ao ler a conta %s: %s', rid, erro)
+            if simultaneas > 1 and isinstance(erro, urllib.error.HTTPError) and erro.code in RECUSAS:
+                # o site pode estar limitando os acessos: volta a ler uma conta por vez
+                self.banco.salvar_config({'leituras_simultaneas': 1})
+                log.warning('O site recusou uma leitura; voltando a ler uma conta por vez')
+                self._falha(f'O site recusou uma leitura (HTTP {erro.code}). Voltei a ler uma conta por vez.')
+            else:
+                self._falha('Sem conexão com o site.', conexao=True)
         if not itens:
             self._conta_falhou(rid, anuncio['preco'], vazia=itens is not None)
             return
