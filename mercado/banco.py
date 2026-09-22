@@ -87,6 +87,8 @@ ORDENS = {
     'nivel': 'a.nivel DESC, a.preco',
     'novas': 'a.primeiro_visto DESC, a.preco',
 }
+# Ordens pelos itens pesquisados (só valem com condições de item): "itens" (soma das unidades),
+# "item:N" (unidades da condição N) e "preco_item" (menor preço por unidade). Ver _ordenar_por_itens.
 
 
 def agora():
@@ -104,6 +106,37 @@ def _numero(v):
 
 def _marcadores(n):
     return ','.join('?' * n)
+
+
+def _condicao(c):
+    """Condição de item da busca com os campos já no formato certo (a interface recebe de volta)."""
+    item_id = c.get('item_id')
+    return {'item_id': int(item_id) if item_id else None, 'nome': str(c.get('nome') or ''),
+            'refino_min': int(_numero(c.get('refino_min')) or 0),
+            'qtd_min': max(1, int(_numero(c.get('qtd_min')) or 1)), 'onde': str(c.get('onde') or '')}
+
+
+def _ordem_por_itens(ordem):
+    return ordem in ('itens', 'preco_item') or (ordem.startswith('item:') and ordem[5:].isdigit())
+
+
+def _ordenar_por_itens(contas, ordem):
+    """Ordena pelas unidades dos itens pesquisados; os empates ficam com o menor preço.
+
+    As contas ainda não lidas ("a confirmar") vão para o fim, porque não se sabe quanto têm.
+    """
+    n = int(ordem[5:]) if ordem.startswith('item:') else None
+
+    def chave(c):
+        q = c['qtd_busca']
+        if not q:
+            return (1, 0, 0, c['preco'], c['id'])
+        total = sum(q)
+        if ordem == 'preco_item':
+            return (0, c['preco'] / total if total else float('inf'), -total, c['preco'], c['id'])
+        return (0, -(q[n] if n is not None and n < len(q) else total), -total, c['preco'], c['id'])
+
+    contas.sort(key=chave)
 
 
 class Banco:
@@ -452,9 +485,13 @@ class Banco:
             p['h24'] = _ha_24h()
         base = list(conds)
 
-        condicoes = [c for c in (f.get('itens') or []) if c and (c.get('item_id') or norm(c.get('nome')))]
+        condicoes = [_condicao(c) for c in (f.get('itens') or []) if c and (c.get('item_id') or norm(c.get('nome')))]
+        filtros_item = []
         for n, cond in enumerate(condicoes):
-            sub = self._sql_item(cond, n, p)
+            filtro = self._filtro_item(cond, n, p)
+            filtros_item.append(filtro)
+            p[f'i{n}_qtd'] = cond['qtd_min']
+            sub = f'SELECT i.anuncio_id FROM itens i WHERE {filtro} GROUP BY i.anuncio_id HAVING SUM(i.qtd) >= :i{n}_qtd'
             site = ids_do_site(cond) if ids_do_site else None
             if site is None:
                 conds.append(f'(a.itens_lidos_em IS NOT NULL AND a.id IN ({sub}))')
@@ -465,17 +502,24 @@ class Banco:
         lucro_sql = 'CASE WHEN a.valor_kk > 0 THEN a.valor_kk / :kk_bi * :bi - a.preco * :tcc END'
         if f.get('so_lucro'):
             conds.append(f'({lucro_sql}) > 0')
-        ordem = ORDENS.get(f.get('ordem'), ORDENS['lucro_rs'])
+        ordem = str(f.get('ordem') or '')
+        por_itens = bool(condicoes) and _ordem_por_itens(ordem)
         linhas = self.con.execute(
             f'SELECT a.*, {lucro_sql} AS lucro_rs, '
             f'CASE WHEN a.valor_kk > 0 THEN ({lucro_sql}) / (a.valor_kk / :kk_bi * :bi) END AS lucro_pct '
-            f'FROM anuncios a WHERE {" AND ".join(conds)} ORDER BY {ordem}', p).fetchall()
+            f'FROM anuncios a WHERE {" AND ".join(conds)} '
+            f'ORDER BY {ORDENS["preco"] if por_itens else ORDENS.get(ordem, ORDENS["lucro_rs"])}', p).fetchall()
 
+        qtds = self._quantidades(filtros_item, p) if condicoes else {}
         contas = []
         for r in linhas:
             conta = self._publico(r, cfg)
             conta['a_confirmar'] = bool(condicoes) and not conta['lida']
+            # unidades de cada item pesquisado (na ordem das condições); None = itens ainda não lidos
+            conta['qtd_busca'] = qtds.get(r['id'], [0] * len(condicoes)) if condicoes and conta['lida'] else None
             contas.append(conta)
+        if por_itens:
+            _ordenar_por_itens(contas, ordem)
         precos = [c['preco'] for c in contas]
         nao_lidas = 0
         if condicoes or f.get('so_lucro'):
@@ -485,23 +529,32 @@ class Banco:
         return {'contas': contas, 'batem': len(contas),
                 'preco_min': min(precos) if precos else None,
                 'preco_mediana': statistics.median(precos) if precos else None,
-                'a_confirmar': sum(c['a_confirmar'] for c in contas), 'nao_lidas': max(0, nao_lidas)}
+                'a_confirmar': sum(c['a_confirmar'] for c in contas), 'nao_lidas': max(0, nao_lidas),
+                'busca_itens': condicoes}
 
     @staticmethod
-    def _sql_item(cond, n, p):
-        """Subconsulta: contas lidas que têm o item da condição n (refino, quantidade e onde)."""
-        if cond.get('item_id'):
+    def _filtro_item(cond, n, p):
+        """Itens (tabela i) que atendem à condição n: qual item, refino mínimo e onde ele está.
+
+        Sem item_id (item digitado, ainda não visto), vale qualquer item com esse texto no nome.
+        """
+        if cond['item_id'] is not None:
             alvo = f'i.item_id = :i{n}_id'
-            p[f'i{n}_id'] = int(cond['item_id'])
+            p[f'i{n}_id'] = cond['item_id']
         else:
-            alvo = f'i.nome_norm = :i{n}_nome'
-            p[f'i{n}_nome'] = norm(cond.get('nome'))
-        secoes = ONDE.get(cond.get('onde'))
+            alvo = f'i.nome_norm LIKE :i{n}_nome'
+            p[f'i{n}_nome'] = f'%{norm(cond["nome"])}%'
+        secoes = ONDE.get(cond['onde'])
         onde = (f'i.secao IN ({",".join(repr(s) for s in secoes)})' if secoes else f'i.secao NOT IN ({_FORA})')
-        p[f'i{n}_ref'] = int(_numero(cond.get('refino_min')) or 0)
-        p[f'i{n}_qtd'] = max(1, int(_numero(cond.get('qtd_min')) or 1))
-        return (f'SELECT i.anuncio_id FROM itens i WHERE {alvo} AND i.refino >= :i{n}_ref AND {onde} '
-                f'GROUP BY i.anuncio_id HAVING SUM(i.qtd) >= :i{n}_qtd')
+        p[f'i{n}_ref'] = cond['refino_min']
+        return f'{alvo} AND i.refino >= :i{n}_ref AND {onde}'
+
+    def _quantidades(self, filtros_item, p):
+        """{conta: [unidades de cada item pesquisado]}, somando todas as pilhas que atendem a cada condição."""
+        somas = ', '.join(f'SUM(CASE WHEN {w} THEN i.qtd ELSE 0 END)' for w in filtros_item)
+        alguma = ' OR '.join(f'({w})' for w in filtros_item)
+        return {r[0]: list(r[1:]) for r in self.con.execute(
+            f'SELECT i.anuncio_id, {somas} FROM itens i WHERE {alguma} GROUP BY i.anuncio_id', p)}
 
     # -------------------------------------------------------------- tabela de valores
 

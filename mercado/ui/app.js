@@ -16,10 +16,11 @@ const limitar = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 const inteiro = n => (n == null ? '—' : Math.round(n).toLocaleString('pt-BR'));
 const decimal = (n, casas = 2) => n.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
 
-function reais(v, sinal = false) {
+/** casas: fixa as casas decimais (as colunas da lista usam as mesmas em todas as linhas, ver casasReais). */
+function reais(v, sinal = false, casas = null) {
   if (v == null || Number.isNaN(v)) return '—';
   const a = Math.abs(v);
-  const t = a >= 100 ? Math.round(a).toLocaleString('pt-BR') : decimal(a);
+  const t = decimal(a, casas ?? (a >= 100 ? 0 : 2));
   const p = sinal ? (v >= 0 ? '+' : '−') : (v < 0 ? '−' : '');
   return `${p}R$ ${t}`;
 }
@@ -39,6 +40,12 @@ function numeroDe(s) {
   else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
+}
+/** Preço em TCC digitado: além de "5000" e "5.000", aceita "5k" (= 5.000). */
+function precoDe(s) {
+  const k = /^(.*\d)\s*k$/i.exec(String(s ?? '').trim());
+  const n = numeroDe(k ? k[1] : s);
+  return n != null && k ? n * 1000 : n;
 }
 
 function ha(iso) {
@@ -213,21 +220,25 @@ function preencherFiltros() {
   $('#f-preco-max').value = f.preco_max ?? '';
   $('#f-nivel').value = f.nivel_min ?? '';
   $('#f-ceu').value = f.ceu || '';
-  $('#f-ordem').value = f.ordem || 'lucro_rs';
   $('#f-lucro').classList.toggle('on', !!f.so_lucro);
   $('#f-novas').classList.toggle('on', !!f.so_novas);
   desenharClasses();
-  desenharCondicoes();
+  desenharCondicoes();  // também desenha e escolhe a ordenação, que depende das condições
 }
 
 const ONDE = [['', 'em qualquer lugar'], ['equipado', 'equipado'], ['mochila', 'na mochila'], ['banco', 'no banco'],
   ['cartas', 'nas cartas'], ['engastada', 'engastada'], ['mascotes', 'nos mascotes']];
+// Seção dos itens para cada "onde"; em qualquer lugar, fora o códice e a recompra (como no banco.py)
+const SECAO_DO_ONDE = { equipado: 'equipado', mochila: 'inventario', banco: 'banco', cartas: 'cartas',
+  engastada: 'engastada', mascotes: 'mascotes' };
+const FORA_DA_BUSCA = new Set(['codice', 'recompra']);
 
 function desenharCondicoes() {
   $('#f-itens').innerHTML = S.filtros.itens.map((c, i) => `
     <div class="condicao" data-i="${i}">
       <div class="condicao-topo">${c.item_id ? `<img src="${ICONE(c.item_id)}" alt="" ${SEM_IMG}>` : ''}
-        <b title="${esc(c.nome)}">${esc(c.nome)}</b><button data-acao="remover" title="Remover"><svg class="ic"><use href="#i-x"/></svg></button></div>
+        ${c.item_id ? `<b title="${esc(c.nome)}">${esc(c.nome)}</b>`
+          : `<b title="Qualquer item com “${esc(c.nome)}” no nome">“${esc(c.nome)}” no nome</b>`}<button data-acao="remover" title="Remover"><svg class="ic"><use href="#i-x"/></svg></button></div>
       <div class="condicao-campos">
         <select class="caixa" data-campo="refino_min" title="Refino mínimo">
           <option value="0">qualquer refino</option>${Array.from({ length: 15 }, (_, n) => `<option value="${n + 1}" ${c.refino_min === n + 1 ? 'selected' : ''}>refino ≥ +${n + 1}</option>`).join('')}
@@ -236,6 +247,24 @@ function desenharCondicoes() {
         <select class="caixa largo" data-campo="onde" title="Onde o item precisa estar">${ONDE.map(([v, t]) => `<option value="${v}" ${(c.onde || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
       </div>
     </div>`).join('');
+  desenharOrdens();
+}
+
+/** Com condições de item, a ordenação ganha as opções pelos itens pesquisados (ver _ordenar_por_itens no banco.py). */
+function desenharOrdens() {
+  const sel = $('#f-ordem');
+  const conds = S.filtros.itens;
+  sel.querySelector('optgroup')?.remove();
+  if (conds.length) {
+    const porItem = conds.length > 1 ? conds.map((c, i) =>
+      `<option value="item:${i}">Mais ${esc(c.nome)}${c.refino_min ? ' +' + c.refino_min : ''}</option>`).join('') : '';
+    sel.insertAdjacentHTML('beforeend', `<optgroup label="Itens pesquisados">
+      <option value="itens">Mais itens pesquisados</option>${porItem}<option value="preco_item">Menor preço por unidade</option></optgroup>`);
+  }
+  if (![...sel.options].some(o => o.value === S.filtros.ordem)) {
+    S.filtros.ordem = conds.length && /^item:/.test(S.filtros.ordem) ? 'itens' : FILTROS_PADRAO.ordem;
+  }
+  sel.value = S.filtros.ordem;
 }
 
 function filtrosMudaram() {
@@ -254,16 +283,16 @@ function iniciarFiltros() {
     chip.classList.toggle('on');
     filtrosMudaram();
   });
-  const texto = (id, campo, numero = false) => $(id).addEventListener('input', e => {
-    S.filtros[campo] = numero ? numeroDe(e.target.value) : e.target.value;
+  const texto = (id, campo, ler = null) => $(id).addEventListener('input', e => {
+    S.filtros[campo] = ler ? ler(e.target.value) : e.target.value;
     filtrosMudaram();
   });
   texto('#f-nome', 'nome');
-  texto('#f-preco-min', 'preco_min', true);
-  texto('#f-preco-max', 'preco_max', true);
-  texto('#f-nivel', 'nivel_min', true);
+  texto('#f-preco-min', 'preco_min', precoDe);
+  texto('#f-preco-max', 'preco_max', precoDe);
+  texto('#f-nivel', 'nivel_min', numeroDe);
   $('#f-ceu').addEventListener('change', e => { S.filtros.ceu = e.target.value; filtrosMudaram(); });
-  $('#f-ordem').addEventListener('change', e => { S.filtros.ordem = e.target.value; filtrosMudaram(); });
+  $('#f-ordem').addEventListener('change', e => { S.filtros.ordem = e.target.value; marcarOrdemNaTabela(); filtrosMudaram(); });
   for (const [id, campo] of [['#f-lucro', 'so_lucro'], ['#f-novas', 'so_novas']]) {
     $(id).addEventListener('click', e => {
       S.filtros[campo] = !S.filtros[campo];
@@ -273,7 +302,13 @@ function iniciarFiltros() {
   }
   $('#f-itens').addEventListener('click', e => {
     if (!e.target.closest('[data-acao="remover"]')) return;
-    S.filtros.itens.splice(Number(e.target.closest('.condicao').dataset.i), 1);
+    const i = Number(e.target.closest('.condicao').dataset.i);
+    S.filtros.itens.splice(i, 1);
+    const porItem = /^item:(\d+)$/.exec(S.filtros.ordem);  // "Mais <item>" segue o item, não a posição
+    if (porItem) {
+      const k = Number(porItem[1]);
+      S.filtros.ordem = k === i ? 'itens' : `item:${k > i ? k - 1 : k}`;
+    }
     desenharCondicoes();
     filtrosMudaram();
   });
@@ -282,6 +317,7 @@ function iniciarFiltros() {
     if (!campo) return;
     const c = S.filtros.itens[Number(e.target.closest('.condicao').dataset.i)];
     c[campo] = campo === 'onde' ? e.target.value : Math.max(campo === 'qtd_min' ? 1 : 0, Math.round(numeroDe(e.target.value) || 0));
+    desenharOrdens();  // o refino aparece no nome das opções "Mais <item>"
     filtrosMudaram();
   });
   $('#limpar-filtros').addEventListener('click', () => {
@@ -293,12 +329,16 @@ function iniciarFiltros() {
   });
   $('#salvar-busca').addEventListener('click', abrirModalBusca);
   seletorDeItem($('#novo-item'), item => {
+    if (!S.filtros.itens.length) S.filtros.ordem = 'itens';  // buscando itens, primeiro quem tem mais
     S.filtros.itens.push({ item_id: item.item_id, nome: item.nome, refino_min: 0, qtd_min: 1, onde: '' });
     $('#novo-item').hidden = true;
     $('#add-cond').hidden = false;
     desenharCondicoes();
     filtrosMudaram();
-  }, () => { $('#novo-item').hidden = true; $('#add-cond').hidden = false; });
+  }, () => { $('#novo-item').hidden = true; $('#add-cond').hidden = false; }, {
+    titulo: q => `Buscar itens com “${q}” no nome`, sempre: true,
+    nota: 'Vale também para itens que ainda não apareceram nas contas lidas; elas entram conforme forem lidas.',
+  });
   $('#add-cond').addEventListener('click', () => {
     $('#novo-item').hidden = false;
     $('#add-cond').hidden = true;
@@ -308,8 +348,10 @@ function iniciarFiltros() {
   });
 }
 
-/** Caixa de busca de itens com sugestões (catálogo do site + itens vistos nas contas). */
-function seletorDeItem(raiz, aoEscolher, aoCancelar, permitirNome = false) {
+/** Caixa de busca de itens com sugestões (catálogo do site + itens vistos nas contas).
+ *  porNome ({ titulo(texto), nota, sempre }) oferece usar o texto digitado, para itens que ainda não
+ *  apareceram em nenhuma conta lida; com "sempre", a opção aparece mesmo quando há sugestões. */
+function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null) {
   const entrada = $('input', raiz);
   const lista = $('.sugestoes', raiz);
   let itens = [];
@@ -327,8 +369,8 @@ function seletorDeItem(raiz, aoEscolher, aoCancelar, permitirNome = false) {
         <img src="${ICONE(it.item_id)}" alt="" ${SEM_IMG}>
         <div><b>${marcar(it.nome)}</b><small>${esc(descricaoItem(it))}</small></div>${i === destaque ? '<kbd>Enter</kbd>' : ''}
       </button>`).join('');
-    if (permitirNome && !itens.some(it => norm(it.nome) === norm(q))) {
-      html += `<button class="sugestao" data-nome="1"><div><b>Cadastrar “${esc(q)}” pelo nome</b><small>Ainda não visto em nenhuma conta; passa a valer quando aparecer.</small></div></button>`;
+    if (porNome && (porNome.sempre || !itens.some(it => norm(it.nome) === norm(q)))) {
+      html += `<button class="sugestao" data-nome="1"><div><b>${porNome.titulo(esc(q))}</b><small>${porNome.nota}</small></div></button>`;
     }
     if (!html) html = '<div class="sugestao vazia">Nenhum item com esse nome.</div>';
     lista.innerHTML = html;
@@ -354,7 +396,7 @@ function seletorDeItem(raiz, aoEscolher, aoCancelar, permitirNome = false) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (itens[destaque]) aoEscolher(itens[destaque]);
-      else if (permitirNome && entrada.value.trim().length >= 3) aoEscolher({ item_id: null, nome: entrada.value.trim(), tipo: 'item', contas: 0 });
+      else if (porNome && entrada.value.trim().length >= 3) aoEscolher({ item_id: null, nome: entrada.value.trim(), tipo: 'item', contas: 0 });
     } else if (e.key === 'Escape') {
       aoCancelar?.();
     }
@@ -387,9 +429,79 @@ async function buscar() {
   try {
     const r = await api('POST', '/api/buscar', S.filtros);
     if (meu !== buscaSeq) return;
+    const antes = JSON.stringify(itensDaBusca());
     S.resultado = r;
     desenharLista();
+    if (S.conta && JSON.stringify(r.busca_itens) !== antes) {  // a aba "Pesquisados" acompanha a busca
+      if (antes === '[]') S.subAba = 'busca';
+      desenharDetalhes();
+    }
   } catch (err) { avisar(err.message, true); }
+}
+
+// ---------------------------------------------------------------- itens pesquisados
+// Condições de item da última busca, como o servidor devolveu (busca_itens).
+const itensDaBusca = () => S.resultado?.busca_itens || [];
+const somaBusca = c => (c.qtd_busca ? c.qtd_busca.reduce((s, q) => s + q, 0) : null);
+const curto = n => n.toLocaleString('pt-BR', { maximumSignificantDigits: 3 });
+
+/** O item atende à condição? Mesma regra do servidor (mercado/banco.py, _filtro_item):
+ *  pelo id do item ou, na condição digitada pelo nome, qualquer item com esse texto no nome. */
+function bateCondicao(it, c) {
+  if (c.item_id != null ? it.item_id !== c.item_id : !norm(it.nome).includes(norm(c.nome))) return false;
+  const secao = SECAO_DO_ONDE[c.onde];
+  return (it.refino || 0) >= c.refino_min && (secao ? it.secao === secao : !FORA_DA_BUSCA.has(it.secao));
+}
+
+/** Para cada condição da busca: os itens da conta que a atendem, o total de unidades e onde estão. */
+function pesquisadosNaConta(d) {
+  return itensDaBusca().map(c => {
+    const achados = d.itens.map((it, i) => [it, i]).filter(([it]) => bateCondicao(it, c));
+    const porSecao = new Map();
+    for (const [it] of achados) porSecao.set(it.secao, (porSecao.get(it.secao) || 0) + it.qtd);
+    const refinos = [...new Set(achados.map(([it]) => it.refino).filter(Boolean))].sort((a, b) => b - a);
+    return { c, achados, porSecao, refinos, total: achados.reduce((s, [it]) => s + it.qtd, 0) };
+  });
+}
+
+/** Marca no cabeçalho da lista a coluna da ordem atual (▾ maior primeiro, ▴ menor primeiro). */
+function marcarOrdemNaTabela() {
+  const o = S.filtros.ordem;
+  const coluna = /^(itens|item:\d+)$/.test(o) ? 'itens' : o === 'lucro_pct' ? 'lucro_rs' : o;
+  $$('.tabela th[data-ordem]').forEach(th => {
+    th.classList.toggle('ordenado', th.dataset.ordem === coluna);
+    th.classList.toggle('sobe', coluna === 'preco' || coluna === 'preco_item');
+  });
+}
+
+// Cada número da lista tem a sua coluna e, nela, as mesmas casas decimais em todas as linhas:
+// assim os algarismos e as vírgulas ficam um embaixo do outro, alinhados com o título.
+/** Por unidade: 3 algarismos no menor valor da lista (0,365 → 3 casas; 12,5 → 1; de 100 para cima, nenhuma). */
+function casasPorUnidade(contas) {
+  const menor = Math.min(...contas.map(c => (somaBusca(c) ? c.preco / somaBusca(c) : Infinity)));
+  return menor < 1 ? 3 : menor < 10 ? 2 : menor < 100 ? 1 : 0;
+}
+/** R$: centavos só se todos os valores da coluna forem menores que R$ 100 (a mesma regra de reais()). */
+const casasReais = valores => (valores.some(v => v != null && Math.abs(v) >= 100) ? 0 : 2);
+
+function porUnidadeHtml(c, casas) {
+  const soma = somaBusca(c);
+  if (soma) return `<td class="num">${decimal(c.preco / soma, casas)}</td>`;
+  return soma == null ? '<td class="num" title="Os itens desta conta ainda não foram lidos"><span class="dim">?</span></td>'
+    : '<td class="num"><span class="dim">—</span></td>';
+}
+
+/** Colunas "Pesquisados": com mais de um item, a soma e depois as unidades de cada um, cada número na sua coluna. */
+function pesquisadosHtml(c, busca, destaque) {
+  const varios = busca.length > 1;
+  if (!c.qtd_busca) {
+    return '<td class="num pesq" title="Os itens desta conta ainda não foram lidos"><span class="dim">?</span></td>'
+      + (varios ? '<td class="pesq"></td>'.repeat(busca.length) : '');
+  }
+  const item = (q, i) => `<td class="pesq item${varios ? '' : ' unico'}${String(i) === destaque ? ' on' : ''}" title="${esc(busca[i].nome)}: ${inteiro(q)}"><div>`
+    + `<span>${qtdCurta(q)}</span>${busca[i].item_id != null ? `<img src="${ICONE(busca[i].item_id)}" alt="" ${SEM_IMG}>` : ''}</div></td>`;
+  return (varios ? `<td class="num pesq soma" title="Soma dos itens pesquisados">${inteiro(somaBusca(c))}</td>` : '')
+    + c.qtd_busca.map(item).join('');
 }
 
 /** Depois de uma atualização, só recarrega o painel se a conta aberta mudou (lida, preço, valor...). */
@@ -402,32 +514,43 @@ function recarregarDetalhesSeMudou() {
 }
 const buscarEmBreve = debounce(buscar, 250);
 
-function lucroHtml(c) {
+function lucroHtml(c, casas) {
   if (c.lucro_rs == null) return '<span class="dim">—</span>';
-  return `<b class="${c.lucro_rs >= 0 ? 'ok' : 'ruim'}">${reais(c.lucro_rs, true)}</b><span class="sub">${pct(c.lucro_pct)}</span>`;
+  return `<b class="${c.lucro_rs >= 0 ? 'ok' : 'ruim'}">${reais(c.lucro_rs, true, casas)}</b><span class="sub">${pct(c.lucro_pct)}</span>`;
 }
 const rotuloDestaque = d => `${d.qtd > 1 ? inteiro(d.qtd) + '× ' : ''}${d.nome}${d.refino ? ' +' + d.refino : ''}`;
 
 function desenharLista() {
   const r = S.resultado;
   if (!r) return;
+  const busca = r.busca_itens || [];
   const partes = [`<b>${inteiro(r.batem)}</b> ${r.batem === 1 ? 'conta bate' : 'contas batem'}`];
   if (r.batem) partes.push(`preço mín. ${inteiro(r.preco_min)} · mediana ${inteiro(r.preco_mediana)} TCC`);
   if (r.a_confirmar) partes.push(`${inteiro(r.a_confirmar)} a confirmar`);
   if (r.nao_lidas) partes.push(`<span title="Contas cujos itens ainda não foram lidos e por isso não entram nestes filtros">${inteiro(r.nao_lidas)} ainda não lidas</span>`);
   $('#resumo').innerHTML = partes.join(' · ');
+  $('#col-por-un').hidden = !busca.length;
+  const colPesquisados = $('#col-pesquisados');
+  colPesquisados.hidden = !busca.length;
+  colPesquisados.colSpan = busca.length > 1 ? busca.length + 1 : 1;  // a soma e uma coluna por item
+  colPesquisados.classList.toggle('num', busca.length === 1);  // com um item só, é uma coluna de número como as outras
+  marcarOrdemNaTabela();
   const visiveis = r.contas.slice(0, S.limite);
-  const assinatura = JSON.stringify([visiveis, S.sel]);
+  const assinatura = JSON.stringify([visiveis, S.sel, busca, S.filtros.ordem]);
   if (assinatura === S.assinaturaLista) return;  // nada mudou na parte visível
   S.assinaturaLista = assinatura;
+  const destaque = /^item:(\d+)$/.exec(S.filtros.ordem)?.[1];  // item escolhido em "Mais <item>"
+  const casas = { un: casasPorUnidade(visiveis), valor: casasReais(visiveis.map(c => c.valor_rs)),
+    lucro: casasReais(visiveis.map(c => c.lucro_rs)) };
   $('#linhas').innerHTML = visiveis.map(c => `
     <tr data-id="${c.id}" class="${c.id === S.sel ? 'sel' : ''}">
-      <td><span class="nome">${esc(c.nome)}</span>${c.nova ? '<span class="selo nova">NOVA</span>' : ''}${c.a_confirmar ? '<span class="selo confirmar" title="A busca do site diz que tem o item; confirma quando a conta for lida">A CONFIRMAR</span>' : ''}${!c.lida && !c.a_confirmar ? '<span class="sub">itens ainda não lidos</span>' : ''}</td>
+      <td class="conta"><div><span class="nome">${esc(c.nome)}</span>${c.nova ? '<span class="selo nova">NOVA</span>' : ''}${c.a_confirmar ? '<span class="selo confirmar" title="A busca do site diz que tem o item; confirma quando a conta for lida">A CONFIRMAR</span>' : ''}</div>${!c.lida && !c.a_confirmar ? '<span class="sub">itens ainda não lidos</span>' : ''}</td>
       <td><img class="icone-classe" src="${CLASSE(c.ocupacao)}" alt="" ${SEM_IMG}>${esc(c.classe)} ${c.nivel}</td>
       <td class="extra">${esc(c.ceu)}</td>
       <td class="num">${inteiro(c.preco)}</td>
-      <td class="num extra">${c.valor_rs != null ? reais(c.valor_rs) : '<span class="dim">—</span>'}</td>
-      <td class="num lucro">${lucroHtml(c)}</td>
+      ${busca.length ? porUnidadeHtml(c, casas.un) + pesquisadosHtml(c, busca, destaque) : ''}
+      <td class="num extra">${c.valor_rs != null ? reais(c.valor_rs, false, casas.valor) : '<span class="dim">—</span>'}</td>
+      <td class="num lucro">${lucroHtml(c, casas.lucro)}</td>
       <td><div class="destaques">${c.destaques.map(d => `<span class="pill ${d.item_id === COSMOS ? 'laranja' : ''}">${esc(rotuloDestaque(d))}</span>`).join('')}</div></td>
     </tr>`).join('');
   const vazio = $('#lista-vazia');
@@ -446,6 +569,14 @@ function iniciarLista() {
   $('#linhas').addEventListener('click', e => {
     const tr = e.target.closest('tr[data-id]');
     if (tr) selecionar(Number(tr.dataset.id));
+  });
+  $('.tabela thead').addEventListener('click', e => {  // clicar no título da coluna ordena por ela
+    const th = e.target.closest('th[data-ordem]');
+    if (!th) return;
+    S.filtros.ordem = th.dataset.ordem;
+    $('#f-ordem').value = S.filtros.ordem;
+    marcarOrdemNaTabela();
+    filtrosMudaram();
   });
   $('#mostrar-mais').addEventListener('click', () => { S.limite += 300; S.assinaturaLista = null; desenharLista(); });
   document.addEventListener('keydown', e => {
@@ -473,7 +604,9 @@ async function selecionar(id, rolar = false) {
     if (meu !== detSeq) return;
     const mesma = S.conta && S.conta.anuncio.id === id;
     S.conta = d;
-    if (!mesma || !S.subAba) S.subAba = d.itens.some(i => i.secao === 'equipado') ? 'equipado' : 'inventario';
+    if (!mesma || !S.subAba) {
+      S.subAba = itensDaBusca().length ? 'busca' : d.itens.some(i => i.secao === 'equipado') ? 'equipado' : 'inventario';
+    }
     desenharDetalhes();
   } catch (err) {
     if (meu === detSeq) $('#detalhes').innerHTML = `<div class="det-vazio"><b>Não consegui abrir a conta</b><span>${esc(err.message)}</span></div>`;
@@ -511,7 +644,7 @@ function desenharDetalhes() {
           <small>${x.refino_min ? `faixa refino ≥ +${x.refino_min} · ` : ''}${x.secoes.map(s => NOMES_SECAO[s] || s).join(', ')}</small></div>
         <div class="num"><b>${ouro(x.kk)}</b><small class="dim">${reais(kkPara(x.kk, bi))}</small></div>
       </div>`).join('')
-    : `<div class="dim">${a.lida ? 'Nenhum item desta conta está na sua tabela de valores. Clique num item abaixo para dar um valor a ele.' : 'O valor aparece quando os itens forem lidos.'}</div>`;
+    : `<div class="dim">${a.lida ? 'Nenhum item desta conta está na sua tabela de valores. Clique num item acima para dar um valor a ele.' : 'O valor aparece quando os itens forem lidos.'}</div>`;
   let conteudo;
   if (!a.lida) {
     conteudo = `<div class="aguardando"><b>Itens ainda não lidos</b>
@@ -520,8 +653,13 @@ function desenharDetalhes() {
   } else {
     const contagem = {};
     for (const it of d.itens) contagem[abaDoItem(it)] = (contagem[abaDoItem(it)] || 0) + 1;
-    if (!contagem[S.subAba]) S.subAba = ABAS_CONTA.find(([k]) => contagem[k])?.[0] || 'equipado';
-    conteudo = `<div class="sub-abas">${ABAS_CONTA.filter(([k]) => contagem[k]).map(([k, t]) =>
+    const abas = ABAS_CONTA.filter(([k]) => contagem[k]);
+    if (itensDaBusca().length) {  // aparece mesmo se a conta não tiver nenhum dos itens pesquisados
+      abas.unshift(['busca', 'Pesquisados']);
+      contagem.busca = qtdCurta(pesquisadosNaConta(d).reduce((s, p) => s + p.total, 0));
+    }
+    if (!abas.some(([k]) => k === S.subAba)) S.subAba = abas[0]?.[0] || 'equipado';
+    conteudo = `<div class="sub-abas">${abas.map(([k, t]) =>
       `<button data-sub="${k}" class="${S.subAba === k ? 'on' : ''}">${t}<small>${contagem[k]}</small></button>`).join('')}</div>
       <div id="sub-conteudo">${conteudoSubAba(d)}</div>`;
   }
@@ -539,13 +677,13 @@ function desenharDetalhes() {
         <div><span>Valor estimado</span><b>${a.valor_rs != null ? reais(a.valor_rs) : '—'}</b><small>${a.valor_kk == null ? 'itens não lidos' : a.valor_kk === 0 ? 'nenhum item da tabela' : ouro(a.valor_kk)}</small></div>
         <div><span>Lucro</span><b class="${cor}">${reais(a.lucro_rs, true)}</b><small>${a.lucro_pct != null ? pct(a.lucro_pct) + ' do valor' : '&nbsp;'}</small></div>
       </div>
-      <div class="rotulo">De onde vem o valor</div>
-      <div class="origem">${origem}</div>
       ${conteudo}
       <div class="det-acoes">
         <button class="btn primario" id="abrir-site"><svg class="ic"><use href="#i-open"/></svg>Abrir no site</button>
         <button class="btn fantasma" id="copiar-link"><svg class="ic"><use href="#i-link"/></svg>Copiar link</button>
       </div>
+      <div class="rotulo">De onde vem o valor</div>
+      <div class="origem">${origem}</div>
     </div>`;
 }
 
@@ -559,6 +697,7 @@ function slotHtml(it, i, indice) {
 
 function conteudoSubAba(d) {
   const indice = valoresPorItem();
+  if (S.subAba === 'busca') return conteudoPesquisados(d, indice);
   const itens = d.itens.map((it, i) => [it, i]).filter(([it]) => abaDoItem(it) === S.subAba);
   if (S.subAba === 'engastada') {
     const grupos = new Map();
@@ -581,6 +720,30 @@ function conteudoSubAba(d) {
       <div class="slots">${lista.map(([it, i]) => slotHtml(it, i, indice)).join('')}</div>`).join('');
   }
   return `<div class="slots">${itens.map(([it, i]) => slotHtml(it, i, indice)).join('')}</div>`;
+}
+
+/** Aba "Pesquisados": quanto a conta tem de cada item da busca, onde estão e os próprios itens. */
+function conteudoPesquisados(d, indice) {
+  const lista = pesquisadosNaConta(d);
+  const total = lista.reduce((s, p) => s + p.total, 0);
+  const linhas = lista.map(p => {
+    // condição digitada pelo nome: se ela achou um item só, mostra o nome e o ícone dele
+    const unico = p.c.item_id == null && new Set(p.achados.map(([it]) => it.item_id)).size === 1 ? p.achados[0][0] : null;
+    const nome = p.c.item_id != null ? p.c.nome : unico ? unico.nome : `“${p.c.nome}” no nome`;
+    return `
+    <div class="origem-linha">
+      <img src="${ICONE(p.c.item_id ?? unico?.item_id)}" alt="" ${SEM_IMG}>
+      <div><b>${esc(nome)}${p.c.refino_min ? ' ≥ +' + p.c.refino_min : ''}</b>
+        <small>${p.total ? [...p.porSecao].map(([s, q]) => `${esc(NOMES_SECAO[s] || s)}: ${inteiro(q)}`).join(' · ')
+          + (p.refinos.length ? ' · refino ' + p.refinos.map(r => '+' + r).join(', ') : '') : 'Esta conta não tem.'}</small></div>
+      <div class="num"><b>${inteiro(p.total)}</b></div>
+    </div>`;
+  }).join('');
+  const soma = total ? `<div class="soma-busca">${lista.length > 1 ? `Total: <b>${inteiro(total)}</b> · ` : ''}`
+    + `${curto(d.anuncio.preco / total)} TCC por unidade</div>` : '';
+  const achados = new Map(lista.flatMap(p => p.achados).map(([it, i]) => [i, it]));  // um item pode atender a duas condições
+  const slots = [...achados].sort((a, b) => a[0] - b[0]).map(([i, it]) => slotHtml(it, i, indice)).join('');
+  return `<div class="origem">${linhas}${soma}</div>${slots ? `<div class="slots">${slots}</div>` : ''}`;
 }
 
 function iniciarDetalhes() {
@@ -893,7 +1056,7 @@ function desenharFormValor() {
       S.form = { ...novoForm(), item: escolhido, unidade: ['livros', 'armas'].includes(escolhido.tipo) || EQUIPAMENTOS.has(escolhido.tipo) ? 'bi' : 'kk' };
       desenharFormValor();
       $('#form-valor-n')?.focus();
-    }, null, true);
+    }, null, { titulo: q => `Cadastrar “${q}” pelo nome`, nota: 'Ainda não visto em nenhuma conta; passa a valer quando aparecer.' });
     if (S.aba === 'valores' && document.activeElement === document.body) sel.focar();
   }
 }
@@ -989,7 +1152,9 @@ function pillsDosFiltros(f) {
   const p = [];
   if (f.nome) p.push(`nome: ${f.nome}`);
   if (f.classes?.length) p.push(f.classes.join(', '));
-  if (f.preco_min != null || f.preco_max != null) p.push(`${f.preco_min != null ? inteiro(f.preco_min) : '0'} a ${f.preco_max != null ? inteiro(f.preco_max) : '∞'} TCC`);
+  if (f.preco_min != null && f.preco_max != null) p.push(`${inteiro(f.preco_min)} a ${inteiro(f.preco_max)} TCC`);
+  else if (f.preco_max != null) p.push(`até ${inteiro(f.preco_max)} TCC`);
+  else if (f.preco_min != null) p.push(`a partir de ${inteiro(f.preco_min)} TCC`);
   if (f.nivel_min) p.push(`nível ≥ ${f.nivel_min}`);
   if (f.ceu) p.push(`Céu ${f.ceu}`);
   for (const c of f.itens || []) {
@@ -1086,6 +1251,8 @@ function abrirModalBusca(existente) {
   $('#b-nome').value = buscaEditando ? buscaEditando.nome : atual ? atual.nome : sugestaoDeNome(f);
   $('#b-resumo').innerHTML = pillsDosFiltros(f);
   $('#b-avisar').classList.toggle('on', buscaEditando ? buscaEditando.avisar : true);
+  $('#b-preco-max').value = f.preco_max != null ? inteiro(f.preco_max) : '';
+  mostrarPrecoDaJanela();
   $('#b-lucro-rs').value = buscaEditando?.lucro_min_rs ?? '';
   $('#b-lucro-pct').value = buscaEditando?.lucro_min_pct ?? '';
   $('#b-salvar').textContent = buscaEditando ? 'Salvar' : atual ? `Atualizar “${atual.nome}”` : 'Salvar busca';
@@ -1099,12 +1266,30 @@ function sugestaoDeNome(f) {
   if (f.preco_max != null) partes.push(`até ${inteiro(f.preco_max)} TCC`);
   return partes.join(' · ').slice(0, 60) || 'Minha busca';
 }
+/** O preço da janela é o preço máximo da própria busca: vale para o aviso e para a lista da busca. */
+const filtrosDaJanela = () => ({ ...(buscaEditando ? buscaEditando.filtros : S.filtros), preco_max: precoDe($('#b-preco-max').value) });
+function mostrarPrecoDaJanela() {
+  const f = filtrosDaJanela();
+  const invalido = f.preco_max == null && $('#b-preco-max').value.trim() !== '';
+  const conversao = $('#b-preco-rs');
+  conversao.textContent = invalido ? 'Use um número, como 5000 ou 5k.'
+    : f.preco_max != null ? `= ${reais(f.preco_max * (S.estado?.rs_por_tcc ?? 1))}` : '';
+  conversao.classList.toggle('ruim', invalido);
+  $('#b-resumo').innerHTML = pillsDosFiltros(f);
+}
 function iniciarModalBusca() {
   $('#b-avisar').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
+  $('#b-preco-max').addEventListener('input', mostrarPrecoDaJanela);
   $('#b-salvar').addEventListener('click', async () => {
+    const filtros = filtrosDaJanela();
+    if (filtros.preco_max == null && $('#b-preco-max').value.trim()) { avisar('Preço inválido. Use um número, como 5000 ou 5k.', true); return; }
+    if (filtros.preco_max != null && filtros.preco_min != null && filtros.preco_min > filtros.preco_max) {
+      avisar(`O preço mínimo dos filtros (${inteiro(filtros.preco_min)} TCC) é maior que esse preço.`, true);
+      return;
+    }
     const corpo = {
       nome: $('#b-nome').value.trim(),
-      filtros: buscaEditando ? buscaEditando.filtros : S.filtros,
+      filtros,
       avisar: $('#b-avisar').classList.contains('on'),
       lucro_min_rs: numeroDe($('#b-lucro-rs').value),
       lucro_min_pct: numeroDe($('#b-lucro-pct').value),
@@ -1114,6 +1299,12 @@ function iniciarModalBusca() {
       if (id) await api('PUT', `/api/buscas/${id}`, corpo);
       const novo = id ? { id } : await api('POST', '/api/buscas', corpo);
       if (!buscaEditando) { S.buscaAtual = { id: novo.id, nome: corpo.nome }; guardar('buscaAtual', S.buscaAtual); }
+      // a busca aberta na lista fica com o mesmo preço, para o próximo "Atualizar" não desfazer o que foi salvo aqui
+      if ((!buscaEditando || buscaEditando.id === S.buscaAtual?.id) && S.filtros.preco_max !== filtros.preco_max) {
+        S.filtros.preco_max = filtros.preco_max;
+        preencherFiltros();
+        filtrosMudaram();
+      }
       $('#modal-busca').hidden = true;
       avisar(corpo.avisar ? 'Busca salva. Você vai ser avisado quando aparecer uma conta nova que bata.' : 'Busca salva.');
       carregarBuscas();

@@ -110,8 +110,10 @@
     <div class="tabela-rolagem" id="rolagem">
       <table class="tabela">
         <thead><tr>
-          <th>Conta</th><th>Classe</th><th class="extra">Céu</th><th class="num">Preço</th>
-          <th class="num extra">Valor</th><th class="num">Lucro</th><th>Destaques</th>
+          <th>Conta</th><th>Classe</th><th class="extra">Céu</th><th class="num" data-ordem="preco" title="Ordenar pelo menor preço">Preço</th>
+          <th class="num" id="col-por-un" data-ordem="preco_item" title="Preço dividido pela soma dos itens pesquisados (TCC por unidade). Clique para ver primeiro o menor." hidden>Por un.</th>
+          <th id="col-pesquisados" data-ordem="itens" title="Unidades de cada item pesquisado e, com mais de um, a soma. Clique para ver primeiro quem tem mais." hidden>Pesquisados</th>
+          <th class="num extra" data-ordem="valor" title="Ordenar pelo maior valor estimado">Valor</th><th class="num" data-ordem="lucro_rs" title="Ordenar pelo maior lucro">Lucro</th><th>Destaques</th>
         </tr></thead>
         <tbody id="linhas"></tbody>
       </table>
@@ -220,6 +222,9 @@
       <div class="resumo-filtros" id="b-resumo"></div>
       <div class="opcao"><div><b>Me avisar</b><small>Quando aparecer uma conta nova, reanunciada ou mais barata que bata com a busca.</small></div>
         <button class="chave on" id="b-avisar" role="switch"></button></div>
+      <div class="campo"><label for="b-preco-max">Só avisar se o preço for de até (opcional)</label>
+        <div class="par"><label class="dinheiro"><input id="b-preco-max" inputmode="decimal" placeholder="qualquer preço"><span>TCC</span></label><small class="conversao" id="b-preco-rs"></small></div>
+      </div>
       <div class="campo"><label>Só avisar se o lucro for de pelo menos (opcional)</label>
         <div class="par"><label class="dinheiro"><span>R$</span><input id="b-lucro-rs" inputmode="decimal" placeholder="—"></label><label class="dinheiro"><input id="b-lucro-pct" inputmode="decimal" placeholder="—"><span>%</span></label></div>
       </div>

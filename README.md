@@ -29,9 +29,17 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 ## O que tem em cada aba
 
 **Contas**
-- **Filtros:** nome, classes, faixa de preço (TCC), nível mínimo, Céu e condições de item (refino mínimo, quantidade mínima e onde o item está: equipado, mochila, banco, cartas, engastado, mascotes).
+- **Filtros:** nome, classes, faixa de preço (TCC), nível mínimo, Céu e condições de item (refino mínimo, quantidade mínima e onde o item está: equipado, mochila, banco, cartas, engastado, mascotes). As sugestões do "Tem item" trazem os equipamentos do site e os itens já vistos nas contas lidas. Qualquer item também pode ser buscado por parte do nome, inclusive os que ainda não apareceram, como uma pedra engastada rara. Por exemplo, "pedra do dem", ou "relíquia maravilha" para juntar as três relíquias numa condição. As contas que tiverem o item aparecem conforme forem lidas.
 - **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Contas que ainda não foram lidas, mas que a busca do site diz terem o item, aparecem como **A CONFIRMAR**.
-- **Detalhes:** mostram de onde vem o valor, os itens por aba com o tooltip do jogo ao passar o mouse e o botão "Abrir no site". Clicar num item abre um balão para dar valor a ele ali mesmo.
+- **Itens pesquisados:** com condições de item, a lista ganha as colunas **Por un.** e **Pesquisados**:
+  - Por un. é o preço dividido pela soma dos itens pesquisados (TCC por unidade);
+  - Pesquisados mostra a soma e quantas unidades de cada item a conta tem, cada número na sua coluna;
+  - a contagem junta todas as pilhas e respeita o refino mínimo e o "onde" de cada condição;
+  - novas ordenações: "Mais itens pesquisados" (a soma), "Mais …" (um item específico) e "Menor preço por unidade";
+  - ao adicionar o primeiro item, a lista já passa para "Mais itens pesquisados";
+  - nessas ordenações, os empates ficam com o menor preço, e as contas ainda não lidas aparecem com "?" no fim.
+- **Ordenar pela coluna:** clicar no título Preço, Por un., Pesquisados, Valor ou Lucro ordena por ela. A coluna em uso fica dourada, com ▾ (maior primeiro) ou ▴ (menor primeiro).
+- **Detalhes:** mostram os itens por aba, com o tooltip do jogo ao passar o mouse, o botão "Abrir no site" e, por último, de onde vem o valor. Com condições de item, a primeira aba, **Pesquisados**, mostra quanto a conta tem de cada item, onde estão (mochila, banco…) e o preço por unidade. Clicar num item abre um balão para dar valor a ele ali mesmo.
 - **Painéis:** as divisórias ⋮ podem ser arrastadas, e o botão ⟩ recolhe os detalhes (a lista ganha as colunas Céu e Valor). Use ↑ e ↓ para percorrer a lista.
 
 **Tabela de valores**
@@ -41,7 +49,7 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 ![Tabela de valores com o cadastro de um item](docs/telas/tabela-de-valores.png)
 
 **Buscas e avisos**
-- Buscas salvas com "me avisar", lucro mínimo (R$ ou %) e quantas contas batem agora.
+- Buscas salvas com "me avisar", preço máximo, lucro mínimo (R$ ou %) e quantas contas batem agora. Exemplo: avisar sempre que aparecer uma conta com um ou mais itens escolhidos por até 5.000 TCC. O preço aceita "5k". Ele é o mesmo "Preço máximo" dos filtros, então vale também para a lista da busca.
 - Histórico dos avisos. Clicar num aviso abre a conta.
 
 **⚙ Configurações**

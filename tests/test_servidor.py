@@ -85,9 +85,12 @@ class Servidor(unittest.TestCase):
         self.assertIn('Arqueiro', [c['classe'] for c in dados['classes']])
 
     def test_buscar_com_contas_a_confirmar(self):
-        status, dados = self.chamar('POST', '/api/buscar', {'itens': [{'item_id': COSMOS, 'refino_min': 12}]})
+        status, dados = self.chamar('POST', '/api/buscar', {'itens': [{'item_id': COSMOS, 'refino_min': 12}],
+                                                            'ordem': 'itens'})
         self.assertEqual(status, 200)
         self.assertEqual({c['id']: c['a_confirmar'] for c in dados['contas']}, {231216: False, 3152: True})
+        self.assertEqual([(c['id'], c['qtd_busca']) for c in dados['contas']], [(231216, [1]), (3152, None)])
+        self.assertEqual([(b['item_id'], b['refino_min']) for b in dados['busca_itens']], [(COSMOS, 12)])
 
     def test_conta(self):
         status, dados = self.chamar('GET', '/api/conta/45520')

@@ -112,7 +112,7 @@ input::placeholder { color: #566077; }
 .icone-classe { width: 20px; height: 20px; border-radius: 50%; vertical-align: middle; margin-right: 6px; background: var(--s3); }
 
 /* ------------------------------------------------------------ vistas */
-.vista { display: none; min-height: 0; }
+.vista { display: none; min-height: 0; grid-row: 4; }  /* sempre a linha que ocupa o resto da janela */
 .vista.on { display: grid; }
 .painel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 #v-contas { grid-template-columns: var(--w-filtros) 6px minmax(0, 1fr) 6px var(--w-detalhes); }
@@ -160,17 +160,41 @@ input::placeholder { color: #566077; }
 .resumo b { color: var(--tx); }
 .tabela-rolagem { flex: 1; overflow: auto; }
 .tabela { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.tabela th { position: sticky; top: 0; z-index: 1; background: var(--bg); text-align: left; color: var(--tx3); font-weight: 600; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--ln); white-space: nowrap; }
+.tabela th { position: sticky; top: 0; z-index: 1; background: var(--bg); text-align: left; color: var(--tx3); font-weight: 600; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; padding: 8px 10px; white-space: nowrap;
+  box-shadow: inset 0 -1px 0 var(--ln); }  /* linha como sombra: com border-collapse, a borda ficaria para trás ao rolar a lista */
+.tabela th.num { text-align: right; }  /* títulos das colunas de número alinhados com os valores */
+.tabela th[data-ordem] { cursor: pointer; }
+.tabela th[data-ordem]:hover { color: var(--tx); }
+.tabela th.ordenado { color: var(--ouro2); --seta: '▾'; }
+.tabela th.ordenado.sobe { --seta: '▴'; }
+/* A seta fica fora do fluxo: não alarga a coluna nem tira o título do alinhamento quando a ordem muda.
+   Nos títulos à direita, ela vai antes do texto. */
+.tabela th.ordenado::after { content: var(--seta); position: absolute; margin-left: 4px; }
+.tabela th.ordenado.num::after { content: none; }
+.tabela th.ordenado.num::before { content: var(--seta); position: absolute; transform: translateX(calc(-100% - 4px)); }
 .tabela td { padding: 8px 10px; border-bottom: 1px solid #1a1f2a; white-space: nowrap; vertical-align: middle; }
 .tabela tbody tr { cursor: pointer; }
 .tabela tbody tr:hover td { background: #151a24; }
 .tabela tbody tr.sel td { background: #1e2638; }
 .tabela tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--ouro); }
 .tabela .nome { font-weight: 600; }
+/* Com a lista estreita, as marcas NOVA e A CONFIRMAR descem para baixo do nome em vez de empurrar as outras colunas */
+.tabela td.conta > div { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.tabela td.conta .selo { margin-left: 0; }
 .tabela .sub { display: block; font-size: 11px; color: var(--tx3); font-weight: 400; }
 .tabela .lucro b { display: block; }
 .tabela .destaques { display: flex; gap: 4px; flex-wrap: nowrap; overflow: hidden; max-width: 260px; }
 .tabela .destaques .pill { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 22px; }
+/* Pesquisados: a soma e cada item em colunas próprias (o título abrange todas), mais juntas entre si */
+.tabela td.pesq { font-variant-numeric: tabular-nums; }
+.tabela td.pesq + td.pesq { padding-left: 6px; }
+.tabela td.pesq:has(+ td.pesq) { padding-right: 6px; }
+.tabela td.soma { font-weight: 600; }
+.tabela td.item { color: var(--tx2); }
+.tabela td.item > div { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }  /* número colado no ícone, os dois alinhados à direita */
+.tabela td.item img { width: 18px; height: 18px; border-radius: 4px; background: #0a0c11; }
+.tabela td.item.unico { color: var(--tx); font-weight: 600; }
+.tabela td.item.on { color: var(--ouro2); font-weight: 600; }
 .tabela .extra { display: none; }
 #v-contas.sem-detalhes .tabela .extra { display: table-cell; }
 .vazio { padding: 48px 24px; text-align: center; color: var(--tx3); }
@@ -190,6 +214,7 @@ input::placeholder { color: #566077; }
 .dinheiro-grade span { font-size: 11px; color: var(--tx3); }
 .dinheiro-grade b { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dinheiro-grade small { font-size: 11px; color: var(--tx3); }
+.det-corpo > .rotulo { margin-top: 2px; padding-top: 14px; border-top: 1px solid var(--ln); }  /* "De onde vem o valor", por último, separado dos botões */
 .origem { display: flex; flex-direction: column; gap: 2px; }
 .origem-linha { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
 .origem-linha img { width: 28px; height: 28px; border-radius: 6px; background: #0a0c11; border: 1px solid var(--ln2); }
@@ -210,6 +235,9 @@ input::placeholder { color: #566077; }
 .slot img { width: 34px; height: 34px; }
 .slot .qtd { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
 .slot .ref { position: absolute; right: 3px; top: 1px; font-size: 10px; font-weight: 800; color: var(--ouro2); text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+.soma-busca { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--ln); color: var(--tx3); font-size: 12px; }
+.soma-busca b { color: var(--tx); font-variant-numeric: tabular-nums; }
+#sub-conteudo .origem + .slots { margin-top: 12px; }
 .grupo-secao { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--tx3); font-weight: 600; margin: 4px 0 -4px; }
 .pedras { display: flex; flex-direction: column; }
 .pedra { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--ln); }
@@ -268,6 +296,8 @@ input::placeholder { color: #566077; }
 .valor-entrada { display: flex; gap: 8px; align-items: center; }
 .valor-entrada .caixa { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .conversao { color: var(--tx3); font-size: 11.5px; }
+.par > .conversao { align-self: center; }
+.conversao.ruim { color: var(--ruim); }
 .conversao b { color: var(--tx); }
 .impacto { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--ln); border-radius: 10px; overflow: hidden; }
 .impacto div { padding: 9px 10px; display: flex; flex-direction: column; gap: 1px; background: var(--s2); min-width: 0; }

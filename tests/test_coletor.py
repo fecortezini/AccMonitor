@@ -173,6 +173,19 @@ class Avisos(BaseColetor):
         self.ler_tudo_da_fila()
         self.assertEqual(self.avisos, [])
 
+    def test_preco_maximo(self):
+        """O preço máximo da busca vale para o aviso: acima dele não avisa, e avisa quando a conta baixa até ele."""
+        self.banco.salvar_busca({'nome': 'Cosmos +10', 'avisar': True, 'filtros': {
+            'itens': [{'item_id': COSMOS, 'refino_min': 10}], 'preco_max': 12000}}, self.busca)
+        self.reanunciar(231216)  # 15.000 TCC
+        self.ler_tudo_da_fila()
+        self.assertEqual(self.avisos, [])
+        self.site.anuncios[231216] = dataclasses.replace(self.site.anuncios[231216], preco=12000)
+        self.coletor.consultar_lista()
+        self.ler_tudo_da_fila()
+        self.assertEqual(len(self.avisos), 1)
+        self.assertIn('baixou de 15.000 TCC para 12.000 TCC', self.avisos[0][2])
+
     def test_busca_sem_aviso(self):
         self.banco.salvar_busca({'nome': 'Cosmos +10', 'avisar': False, 'filtros': {}}, self.busca)
         self.reanunciar(231216)

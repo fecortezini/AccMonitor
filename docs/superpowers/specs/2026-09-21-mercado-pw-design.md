@@ -141,19 +141,20 @@ Tema escuro, fonte Segoe UI Variable, ícones reais do jogo, conforme os mockups
   - preço mínimo e máximo (TCC);
   - nível mínimo;
   - Céu;
-  - condições de item: item escolhido por sugestões, refino ≥, quantidade ≥ e onde (qualquer, equipado, mochila, banco, cartas, engastada);
+  - condições de item: item escolhido por sugestões (ou por parte do nome, que vale também para itens ainda não vistos nas contas lidas), refino ≥, quantidade ≥ e onde (qualquer, equipado, mochila, banco, cartas, engastada);
   - "só com lucro" e "só novas (24 h)";
-  - ordenação: lucro R$, lucro %, preço, valor, nível ou mais novas.
+  - ordenação: lucro R$, lucro %, preço, valor, nível ou mais novas. Com condições de item, também mais itens pesquisados (soma), mais de um item específico e menor preço por unidade.
 - **Lista:**
   - Colunas: conta (com a marca NOVA nas primeiras 24 h desde que o programa a viu pela primeira vez; as contas da primeira consulta de um banco novo não ganham a marca), classe e nível, preço, lucro (R$ e %) e destaques (os itens da tabela que mais pesam).
+  - Com condições de item, entram as colunas "Por un." (preço dividido pela soma dos itens pesquisados) e "Pesquisados" (a soma e as unidades de cada item pesquisado). A contagem é a mesma do filtro: todas as pilhas que atendem ao refino mínimo e ao "onde" da condição.
   - Acima da lista: quantas contas batem, o preço mínimo e a mediana.
   - As setas ↑ e ↓ trocam a conta selecionada.
 - **Detalhes:**
   - cabeçalho com classe, nível e Céu;
   - preço, valor estimado e lucro;
-  - "de onde vem o valor", item por item;
-  - sub-abas (Equipado, Mochila, Banco, Cartas, Mascotes, Códice…) com a grade de itens: ícone, quantidade e tooltip colorido ao passar o mouse;
-  - botões "Abrir no site" e "Copiar link".
+  - sub-abas (Equipado, Mochila, Banco, Cartas, Mascotes, Códice…) com a grade de itens: ícone, quantidade e tooltip colorido ao passar o mouse. Com condições de item, a primeira é "Pesquisados": quanto a conta tem de cada item, em que seções e o preço por unidade;
+  - botões "Abrir no site" e "Copiar link";
+  - por último, "de onde vem o valor", item por item, para os itens aparecerem logo abaixo do preço.
 - **Atalho:** clicar num item da conta abre o balão "Definir valor", que grava direto na tabela.
 - **Contas não lidas nos filtros de equipamento:** a busca do site (`item_ids`) confirma que a conta tem o item. O refino só dá para confirmar no caso do Cosmos (`g17_book_min`). Essas contas aparecem marcadas "a confirmar" até serem lidas e sobem para a prioridade média da fila.
 - **Contas não lidas nos filtros de material ou quantidade:** a lista informa "X contas ainda não lidas".
@@ -170,7 +171,7 @@ Tema escuro, fonte Segoe UI Variable, ícones reais do jogo, conforme os mockups
 
 ### Aba Buscas e avisos
 
-- Buscas salvas: nome, resumo dos filtros, "me avisar" liga/desliga, lucro mínimo (R$ ou %), quantas contas batem agora e data do último aviso.
+- Buscas salvas: nome, resumo dos filtros, "me avisar" liga/desliga, preço máximo (TCC), lucro mínimo (R$ ou %), quantas contas batem agora e data do último aviso. O preço máximo da janela é o mesmo `preco_max` dos filtros da busca, e não um limite à parte; ao salvar a busca aberta na lista, o filtro da lista acompanha.
 - Histórico de avisos. Clicar num aviso abre a conta na aba Contas.
 
 ### Configurações (janela da engrenagem)
@@ -191,7 +192,7 @@ As larguras dos painéis também ficam em `config`.
 
 ## 7. Avisos
 
-- Disparam quando uma conta nova, reativada ou com preço menor é lida e bate com uma busca que tem "me avisar" ligado, incluindo o lucro mínimo, se houver.
+- Disparam quando uma conta nova, reativada ou com preço menor é lida e bate com uma busca que tem "me avisar" ligado, incluindo o preço máximo e o lucro mínimo, se houver. Uma conta acima do preço máximo que baixa até ele também avisa.
 - **Não repetem:** uma mesma combinação de busca + conta + preço só avisa uma vez. Uma nova baixa de preço avisa de novo.
 - **Canais:**
   - notificação do Windows, que fica na tela até ser fechada; clicar nela ou em "Abrir anúncio" abre o anúncio no site para comprar;
@@ -220,6 +221,10 @@ As larguras dos painéis também ficam em `config`.
 - **Limpeza:** os itens de anúncios fora do ar há mais de 7 dias são apagados ao abrir o programa.
 - **Janela:** o programa acompanha o processo do Edge que abriu. Se esse processo terminar logo na abertura (outra janela do mesmo perfil ficou com ela), passa a valer o sinal que a página envia a cada 15 s.
 - **Atualização da interface:** ela consulta o estado a cada 3 s, mas só redesenha a lista se algo visível mudou e só recarrega os detalhes se a conta aberta mudou. O formulário de cadastro nunca é redesenhado enquanto você digita.
+- **Ordens pelos itens pesquisados:** as contas ainda não lidas ("a confirmar") vão para o fim, porque não se sabe quanto têm. "Mais …" (um item) segue o item quando outra condição é removida. Sem condições de item, essas ordens somem e volta a ordem padrão. Ao adicionar o primeiro item, a ordem passa para "Mais itens pesquisados".
+- **Ordenar pela coluna:** os títulos Preço, Por un., Pesquisados, Valor e Lucro ordenam a lista, e o "Ordenar por" acompanha. O "Ordenar por" fica no fim do painel de filtros e some da tela quando há várias condições de item.
+- **Colunas de número alinhadas:** cada número da lista tem a sua coluna, com o título alinhado do mesmo lado (à direita), e as mesmas casas decimais em todas as linhas. Por unidade: 3 algarismos no menor valor. R$: centavos só se todos os valores forem menores que R$ 100. Nos pesquisados, a soma e cada item são colunas separadas, com o número colado no ícone. Com a lista estreita, as marcas NOVA e A CONFIRMAR descem para baixo do nome.
+- **Item digitado pelo nome:** a condição vale para qualquer item com o texto no nome, sem diferenciar maiúsculas e acentos. Na Tabela de valores, o nome continua exato, porque o valor é de um item só.
 
 ## 10. Testes
 
@@ -228,7 +233,7 @@ As larguras dos painéis também ficam em `config`.
   - leitura dos itens por seção, refino, quantidade e pedras engastadas;
   - cálculo do valor (faixas, quantidades, pedras, conversões);
   - filtros no SQLite;
-  - avisos (novo, baixa de preço, lucro mínimo, sem repetição);
+  - avisos (novo, baixa de preço, preço máximo, lucro mínimo, sem repetição);
   - ordem da fila.
 - **Teste completo** com uma lista simulada contendo uma conta nova, conferindo aviso, histórico e interface.
 - **Conferência manual da janela:** abrir, filtrar, ver detalhes, cadastrar valor, salvar busca e alterar configurações.

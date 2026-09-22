@@ -25,9 +25,21 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Interface:** três abas (Contas, Tabela de valores, Buscas e avisos) mais as configurações, seguindo os mockups aprovados.
 - **Janela própria:** o Edge abre em modo aplicativo, e fechar a janela encerra o programa.
 
+**Melhorias depois da primeira versão:**
+- **Itens pesquisados (21/09):** com condições de item:
+  - a lista mostra quantas unidades de cada item a conta tem (coluna Pesquisados);
+  - dá para ordenar por mais itens, por um item específico ou por menor preço por unidade;
+  - ao adicionar o primeiro item, a lista já ordena por quem tem mais;
+  - os detalhes ganham a aba Pesquisados.
+- **Ordenar pela coluna (21/09):** clicar no título Preço, Por un., Pesquisados, Valor ou Lucro ordena a lista.
+- **Aviso por preço (21/09):** a janela "Salvar busca" tem "só avisar se o preço for de até … TCC" (aceita "5k"), além do lucro mínimo.
+- **Detalhes (21/09):** "De onde vem o valor" foi para o fim do painel, depois dos itens e dos botões.
+- **Lista alinhada (21/09):** o preço por unidade virou a coluna Por un., e a soma e cada item pesquisado ganharam colunas próprias. Os números de cada coluna têm as mesmas casas decimais, e cada título fica alinhado com os seus valores.
+- **Busca por parte do nome (21/09):** o "Tem item" aceita parte do nome, inclusive de itens ainda não vistos nas contas lidas. Exemplo: "pedra do dem" no começo da carga, quando só as contas baratas foram lidas. Outro exemplo: "relíquia maravilha", que soma as três relíquias.
+
 **Testes:**
-- **Automáticos:** 70, com páginas reais do site salvas. Todos passam.
-- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Roda sem erros.
+- **Automáticos:** 74, com páginas reais do site salvas. Todos passam.
+- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Rodou sem erros na primeira versão. Depois das melhorias, as telas foram conferidas num Edge invisível com um script avulso, porque o PC onde foram feitas não tem Node. Esse script cobriu os passos do teste antigo e os novos, sem erros.
 - **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
 - **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
 

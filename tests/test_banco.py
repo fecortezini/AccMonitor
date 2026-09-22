@@ -9,6 +9,7 @@ from mercado.banco import Banco
 from tests import paginas
 
 COSMOS, DEMONIO = site.COSMOS_ID, 38154
+PERFEITA, IMORTAL = 5639, 11208  # Pedra Perfeita e Pedra Imortal: as duas contas salvas têm
 
 
 class BaseBanco(unittest.TestCase):
@@ -158,6 +159,43 @@ class Buscar(BaseBanco):
     def test_resumo_da_busca(self):
         r = self.banco.buscar({'classes': ['Arqueiro'], 'nome': 'memoryzito'})
         self.assertEqual((r['batem'], r['preco_min'], r['preco_mediana']), (1, 2400, 2400))
+
+    def qtds(self, filtros, site_ids=None):
+        return [(c['id'], c['qtd_busca']) for c in self.banco.buscar(filtros, site_ids)['contas']]
+
+    def test_quantidade_dos_itens_pesquisados(self):
+        # 45520: Pedra Perfeita 39.996 no banco + 8.008 na mochila, Pedra Imortal 6.856 no banco;
+        # 231216: 2.310 e 14.719, as duas na mochila
+        itens = [{'item_id': PERFEITA, 'nome': 'Pedra Perfeita'}, {'item_id': IMORTAL, 'nome': 'Pedra Imortal'}]
+        r = self.banco.buscar({'itens': itens, 'ordem': 'itens'})
+        self.assertEqual([(c['id'], c['qtd_busca']) for c in r['contas']], [(45520, [48004, 6856]), (231216, [2310, 14719])])
+        self.assertEqual([(b['item_id'], b['nome'], b['qtd_min'], b['onde']) for b in r['busca_itens']],
+                         [(PERFEITA, 'Pedra Perfeita', 1, ''), (IMORTAL, 'Pedra Imortal', 1, '')])
+        # "onde" e o nome valem para a contagem do mesmo jeito que valem para o filtro
+        self.assertEqual(self.qtds({'itens': [{'nome': 'pedra perfeita', 'onde': 'banco'}]}), [(45520, [39996])])
+        self.assertEqual(self.qtds({'itens': [{'item_id': DEMONIO, 'onde': 'engastada'}]}), [(231216, [24])])
+        self.assertEqual(self.qtds({'itens': [{'nome': 'PEDRA DO DEM'}]}), [(231216, [24])])  # parte do nome
+        self.assertEqual(self.qtds({'itens': [{'item_id': COSMOS, 'refino_min': 12}]}), [(231216, [1])])
+        self.assertEqual(self.qtds({'itens': [{'item_id': COSMOS, 'refino_min': 13}]}), [])
+        self.assertIsNone(self.banco.buscar({'nome': 'memoryzito'})['contas'][0]['qtd_busca'])
+
+    def test_ordem_pelos_itens_pesquisados(self):
+        itens = [{'item_id': PERFEITA}, {'item_id': IMORTAL}]
+        self.assertEqual(self.ids({'itens': itens, 'ordem': 'itens'}), [45520, 231216])  # 54.860 x 17.029 unidades
+        self.assertEqual(self.ids({'itens': itens, 'ordem': 'item:1'}), [231216, 45520])  # mais Pedra Imortal
+        self.assertEqual(self.ids({'itens': itens, 'ordem': 'item:9'}), [45520, 231216])  # condição que não existe: soma
+        # Pedra Imortal: 231216 tem mais (14.719 x 6.856), mas 45520 sai mais barata por unidade (2.400 TCC x 15.000)
+        imortal = [{'item_id': IMORTAL}]
+        self.assertEqual(self.ids({'itens': imortal, 'ordem': 'itens'}), [231216, 45520])
+        self.assertEqual(self.ids({'itens': imortal, 'ordem': 'preco_item'}), [45520, 231216])
+        # sem condição de item essas ordens não se aplicam e vale a ordem padrão
+        self.assertEqual(len(self.ids({'ordem': 'itens'})), len(self.lista))
+
+    def test_contas_a_confirmar_vao_para_o_fim(self):
+        # 3152 (20.000 TCC) e 1856 (15.000 TCC) ainda não foram lidas: não se sabe quanto têm
+        filtro = {'itens': [{'item_id': COSMOS, 'refino_min': 12}], 'ordem': 'itens'}
+        self.assertEqual(self.qtds(filtro, lambda cond: {231216, 3152, 1856}),
+                         [(231216, [1]), (1856, None), (3152, None)])
 
 
 class Outros(BaseBanco):
