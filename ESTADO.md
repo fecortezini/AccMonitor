@@ -32,6 +32,7 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
   - ao adicionar o primeiro item, a lista já ordena por quem tem mais;
   - os detalhes ganham a aba Pesquisados.
 - **Ordenar pela coluna (21/09):** clicar no título Preço, Por un., Pesquisados, Valor ou Lucro ordena a lista.
+- **Lance mínimo (22/09):** embaixo do preço, na lista e nos detalhes, aparece pequeno o lance mínimo: 70% do preço pedido, fixo e arredondado para cima.
 - **Aviso por preço (21/09):** a janela "Salvar busca" tem "só avisar se o preço for de até … TCC" (aceita "5k"), além do lucro mínimo.
 - **Detalhes (21/09):** "De onde vem o valor" foi para o fim do painel, depois dos itens e dos botões.
 - **Lista alinhada (21/09):** o preço por unidade virou a coluna Por un., e a soma e cada item pesquisado ganharam colunas próprias. Os números de cada coluna têm as mesmas casas decimais, e cada título fica alinhado com os seus valores.

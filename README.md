@@ -30,7 +30,7 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 
 **Contas**
 - **Filtros:** nome, classes, faixa de preço (TCC), nível mínimo, Céu e condições de item (refino mínimo, quantidade mínima e onde o item está: equipado, mochila, banco, cartas, engastado, mascotes). As sugestões do "Tem item" trazem os equipamentos do site e os itens já vistos nas contas lidas. Qualquer item também pode ser buscado por parte do nome, inclusive os que ainda não apareceram, como uma pedra engastada rara. Por exemplo, "pedra do dem", ou "relíquia maravilha" para juntar as três relíquias numa condição. As contas que tiverem o item aparecem conforme forem lidas.
-- **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Contas que ainda não foram lidas, mas que a busca do site diz terem o item, aparecem como **A CONFIRMAR**.
+- **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes). Contas que ainda não foram lidas, mas que a busca do site diz terem o item, aparecem como **A CONFIRMAR**.
 - **Itens pesquisados:** com condições de item, a lista ganha as colunas **Por un.** e **Pesquisados**:
   - Por un. é o preço dividido pela soma dos itens pesquisados (TCC por unidade);
   - Pesquisados mostra a soma e quantas unidades de cada item a conta tem, cada número na sua coluna;

@@ -6,6 +6,8 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const TOKEN = $('meta[name="token"]').content;
 const COSMOS = 72573;
+const LANCE_MINIMO_PCT = 70;  // o site aceita lances a partir de 70% do preço pedido (valor fixo)
+const lanceMinimo = preco => Math.ceil(preco * LANCE_MINIMO_PCT / 100);  // arredonda para cima: 45 → 32
 const ICONE = id => `https://pwdatabase.theclassic.games/assets/img/vtheclassicpw187/${id}.png`;
 const CLASSE = n => `https://theclassic.games/assets/img/pw_roles/occu_${n}.png`;
 const SEM_IMG = `onerror="this.style.visibility='hidden'"`;
@@ -547,7 +549,7 @@ function desenharLista() {
       <td class="conta"><div><span class="nome">${esc(c.nome)}</span>${c.nova ? '<span class="selo nova">NOVA</span>' : ''}${c.a_confirmar ? '<span class="selo confirmar" title="A busca do site diz que tem o item; confirma quando a conta for lida">A CONFIRMAR</span>' : ''}</div>${!c.lida && !c.a_confirmar ? '<span class="sub">itens ainda não lidos</span>' : ''}</td>
       <td><img class="icone-classe" src="${CLASSE(c.ocupacao)}" alt="" ${SEM_IMG}>${esc(c.classe)} ${c.nivel}</td>
       <td class="extra">${esc(c.ceu)}</td>
-      <td class="num">${inteiro(c.preco)}</td>
+      <td class="num">${inteiro(c.preco)}<span class="sub" title="Lance mínimo: ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(c.preco))}</span></td>
       ${busca.length ? porUnidadeHtml(c, casas.un) + pesquisadosHtml(c, busca, destaque) : ''}
       <td class="num extra">${c.valor_rs != null ? reais(c.valor_rs, false, casas.valor) : '<span class="dim">—</span>'}</td>
       <td class="num lucro">${lucroHtml(c, casas.lucro)}</td>
@@ -673,7 +675,8 @@ function desenharDetalhes() {
       </div>
       ${a.ativo ? '' : '<div class="aguardando"><b>Este anúncio saiu do ar</b><span>Provavelmente foi vendido ou removido.</span></div>'}
       <div class="dinheiro-grade">
-        <div><span>Preço</span><b>${inteiro(a.preco)} TCC</b><small>= ${reais(a.preco_rs)}</small></div>
+        <div><span>Preço</span><b>${inteiro(a.preco)} TCC</b><small>= ${reais(a.preco_rs)}</small>
+          <small title="Lance mínimo: o site aceita lances a partir de ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(a.preco))}</small></div>
         <div><span>Valor estimado</span><b>${a.valor_rs != null ? reais(a.valor_rs) : '—'}</b><small>${a.valor_kk == null ? 'itens não lidos' : a.valor_kk === 0 ? 'nenhum item da tabela' : ouro(a.valor_kk)}</small></div>
         <div><span>Lucro</span><b class="${cor}">${reais(a.lucro_rs, true)}</b><small>${a.lucro_pct != null ? pct(a.lucro_pct) + ' do valor' : '&nbsp;'}</small></div>
       </div>
