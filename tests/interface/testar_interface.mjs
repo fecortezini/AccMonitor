@@ -132,6 +132,29 @@ try {
   await esperar(1500);
   await foto('c6-condicao');
 
+  // "Tem pelo menos um": basta a conta ter um dos itens; a aba Pesquisados dos detalhes mostra qual ela tem
+  for (const item of ['pedra do', 'cosmos']) {
+    await clicar('#add-algum');
+    await esperar(200);
+    await digitar(item);
+    await esperar(1200);
+    await tecla('Enter');
+    await esperar(1500);
+  }
+  await foto('c6b-pelo-menos-um');
+
+  // Grupos de itens: a janela e, na busca, o grupo escolhido (com a caixa vazia, os grupos aparecem primeiro)
+  await clicar('#abrir-grupos');
+  await esperar(600);
+  await foto('c6c-grupos');
+  await tecla('Escape');
+  await clicar('#add-algum');
+  await esperar(600);
+  await foto('c6d-grupos-na-busca');
+  await tecla('Enter');
+  await esperar(1500);
+  await foto('c6e-grupo-na-condicao');
+
   await clicar('#salvar-busca');
   await esperar(400);
   await foto('c7-modal-busca');

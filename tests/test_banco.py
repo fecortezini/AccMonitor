@@ -134,6 +134,31 @@ class Buscar(BaseBanco):
         self.assertEqual(self.ids({'itens': [{'nome': 'pedra perfeita', 'qtd_min': 48005}]}), [])
         self.assertEqual(self.ids({'itens': [{'item_id': DEMONIO, 'onde': 'engastada', 'qtd_min': 24}]}), [231216])
 
+    def test_pelo_menos_um_item(self):
+        # "Tem pelo menos um": basta um dos itens, como a arma de um rank, que tem um nome em cada classe
+        cosmos = {'item_id': COSMOS, 'nome': 'Cosmos', 'refino_min': 12}  # só a 231216 (Bárbaro) tem
+        perfeita = {'nome': 'pedra perfeita', 'qtd_min': 48004}          # só a 45520 (Arqueiro) tem tantas
+        self.assertEqual(self.ids({'algum': [cosmos]}), [231216])
+        self.assertEqual(sorted(self.ids({'algum': [cosmos, perfeita]})), [45520, 231216])
+        # as condições voltam para a aba Pesquisados dos detalhes, que mostra qual delas a conta tem
+        self.assertEqual([(c['item_id'], c['refino_min'], c['qtd_min'])
+                          for c in self.banco.buscar({'algum': [cosmos, perfeita]})['busca_algum']],
+                         [(COSMOS, 12, 1), (None, 0, 48004)])
+        self.assertEqual(self.ids({'algum': [{**cosmos, 'refino_min': 13}, {**perfeita, 'qtd_min': 48005}]}), [])
+        # vale junto com os outros filtros, e o "Tem item" continua exigindo tudo o que pede
+        self.assertEqual(self.ids({'algum': [cosmos, perfeita], 'classes': ['Arqueiro']}), [45520])
+        self.assertEqual(self.ids({'algum': [cosmos, perfeita], 'itens': [{'item_id': DEMONIO, 'onde': 'engastada'}]}),
+                         [231216])
+
+    def test_pelo_menos_um_com_contas_nao_lidas(self):
+        algum = [{'item_id': COSMOS, 'refino_min': 12}, {'nome': 'pedra perfeita', 'qtd_min': 48004}]
+        r = self.banco.buscar({'algum': algum}, lambda cond: {231216, 3152} if cond.get('item_id') == COSMOS else None)
+        por_id = {c['id']: c for c in r['contas']}
+        self.assertEqual(sorted(por_id), [3152, 45520, 231216])
+        self.assertEqual([rid for rid, c in por_id.items() if c['a_confirmar']], [3152])  # a busca do site diz que tem
+        # sem "Tem item" não há itens pesquisados: nem colunas, nem quantidades
+        self.assertEqual((r['a_confirmar'], r['busca_itens'], por_id[45520]['qtd_busca']), (1, [], None))
+
     def test_contas_nao_lidas_pela_busca_do_site(self):
         resultado = self.banco.buscar({'itens': [{'item_id': COSMOS, 'refino_min': 12}]},
                                       lambda cond: {231216, 3152, 1856})
@@ -216,6 +241,53 @@ class Buscar(BaseBanco):
                          [(231216, [1]), (1856, None), (3152, None)])
 
 
+class Grupos(BaseBanco):
+    """Grupos de itens, como as armas de um rank, que têm um nome em cada classe."""
+
+    def setUp(self):
+        super().setUp()
+        # um item que só a 45520 tem, para o grupo achar as duas contas
+        ids = {rid: {it.item_id for it in itens if it.item_id} for rid, itens in self.itens.items()}
+        self.so_45520 = min(ids[45520] - ids[231216])
+        self.gid = self.banco.salvar_grupo({'nome': 'Armas do rank', 'itens': [
+            {'item_id': COSMOS, 'nome': 'Cosmos'}, {'item_id': self.so_45520, 'nome': 'Outra'},
+            {'item_id': COSMOS, 'nome': 'Cosmos repetido'}, {'nome': 'sem id'}]})
+
+    def ids(self, filtros):
+        return sorted(c['id'] for c in self.banco.buscar(filtros)['contas'])
+
+    def test_criar_editar_e_apagar(self):
+        self.assertEqual([(g['nome'], [it['item_id'] for it in g['itens']]) for g in self.banco.grupos()],
+                         [('Armas do rank', [COSMOS, self.so_45520])])  # sem repetir e só itens com id
+        with self.assertRaises(ValueError):
+            self.banco.salvar_grupo({'nome': 'Armas do rank', 'itens': []})  # nome repetido
+        with self.assertRaises(ValueError):
+            self.banco.salvar_grupo({'nome': ' ', 'itens': []})
+        self.banco.salvar_grupo({'nome': 'Armas UP4', 'itens': [{'item_id': COSMOS}]}, self.gid)
+        self.assertEqual([g['nome'] for g in self.banco.grupos()], ['Armas UP4'])
+        with self.assertRaises(KeyError):
+            self.banco.salvar_grupo({'nome': 'Outro'}, 999)
+        self.banco.apagar_grupo(self.gid)
+        self.assertEqual(self.banco.grupos(), [])
+
+    def test_grupo_vale_para_qualquer_item_dele(self):
+        grupo = {'grupo_id': self.gid, 'nome': 'Armas do rank'}
+        self.assertEqual(self.ids({'algum': [grupo]}), [45520, 231216])
+        self.assertEqual(self.ids({'itens': [grupo]}), [45520, 231216])
+        self.assertEqual(self.ids({'itens': [{**grupo, 'refino_min': 12}]}), [231216])  # só o Cosmos +12
+        self.assertEqual(self.ids({'itens': [grupo], 'classes': ['Arqueiro']}), [45520])
+        r = self.banco.buscar({'itens': [grupo]})
+        self.assertEqual((r['busca_itens'][0]['itens'], r['busca_itens'][0]['nome']), ([COSMOS, self.so_45520], 'Armas do rank'))
+
+    def test_grupo_apagado_nao_acha_nada(self):
+        self.banco.apagar_grupo(self.gid)
+        self.assertEqual(self.ids({'algum': [{'grupo_id': self.gid, 'nome': 'Armas do rank'}]}), [])
+
+    def test_itens_do_grupo_sao_lidos_antes(self):
+        self.banco.salvar_busca({'nome': 'Rank', 'filtros': {'algum': [{'grupo_id': self.gid, 'nome': 'Armas do rank'}]}})
+        self.assertEqual(self.banco.ids_valorizados(), {COSMOS, self.so_45520})
+
+
 class Outros(BaseBanco):
     def test_sugestoes(self):
         sug = self.banco.sugestoes('pedra do dem')
@@ -246,6 +318,13 @@ class Outros(BaseBanco):
         self.assertEqual([a['conta'] for a in self.banco.avisos()], ['memoryzito', 'memoryzito'])
         self.banco.apagar_busca(bid)
         self.assertEqual(self.banco.avisos(), [])
+
+    def test_itens_das_buscas_sao_lidos_antes(self):
+        # os itens das buscas salvas, dos dois tipos de condição, fazem as contas que os têm subirem na fila
+        self.banco.salvar_busca({'nome': 'Arma do rank', 'filtros': {
+            'itens': [{'item_id': COSMOS, 'nome': 'Cosmos'}],
+            'algum': [{'item_id': DEMONIO, 'nome': 'Pedra do Demônio'}, {'item_id': None, 'nome': 'relíquia'}]}})
+        self.assertEqual(self.banco.ids_valorizados(), {COSMOS, DEMONIO})
 
     def test_limpar_antigos(self):
         lista = dict(self.lista)

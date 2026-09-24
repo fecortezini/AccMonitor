@@ -126,6 +126,17 @@ class Servidor(unittest.TestCase):
         self.assertEqual(self.chamar('POST', '/api/buscas', {'filtros': {}})[0], 400)
         self.assertEqual(self.chamar('DELETE', f"/api/buscas/{dados['id']}")[0], 200)
 
+    def test_grupos(self):
+        status, dados = self.chamar('POST', '/api/grupos', {'nome': 'Armas UP4', 'itens': [{'item_id': COSMOS, 'nome': 'Cosmos'}]})
+        self.assertEqual(status, 200)
+        gid = dados['id']
+        self.assertEqual(self.chamar('POST', '/api/grupos', {'nome': 'Armas UP4', 'itens': []})[0], 400)  # repetido
+        self.assertEqual(self.chamar('PUT', f'/api/grupos/{gid}', {'nome': 'Armas UP3', 'itens': []})[0], 200)
+        _, lista = self.chamar('GET', '/api/grupos')
+        self.assertIn(('Armas UP3', []), [(g['nome'], g['itens']) for g in lista['grupos']])
+        self.assertEqual(self.chamar('DELETE', f'/api/grupos/{gid}')[0], 200)
+        self.assertEqual(self.chamar('PUT', '/api/grupos/999999', {'nome': 'x'})[0], 404)
+
     def test_config(self):
         _, cfg = self.chamar('PUT', '/api/config', {'intervalo_s': 45, 'rs_por_bi': 480})
         self.assertEqual((cfg['intervalo_s'], cfg['rs_por_bi']), (45, 480))

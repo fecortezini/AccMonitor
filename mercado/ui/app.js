@@ -98,14 +98,15 @@ function guardar(chave, valor) { try { localStorage.setItem(chave, JSON.stringif
 function lembrar(chave, padrao) { try { return JSON.parse(localStorage.getItem(chave)) ?? padrao; } catch { return padrao; } }
 
 // ================================================================ estado
+// itens: "Tem item" (a conta precisa ter todos); algum: "Tem pelo menos um" (basta um deles)
 const FILTROS_PADRAO = { nome: '', classes: [], preco_min: null, preco_max: null, nivel_min: null, ceu: '',
-  itens: [], so_lucro: false, so_novas: false, ordem: 'lucro_rs' };
+  itens: [], algum: [], so_lucro: false, so_novas: false, ordem: 'lucro_rs' };
 const S = {
   aba: 'contas', estado: null, versao: null, versaoCarregada: {},
   config: null, filtros: { ...structuredClone(FILTROS_PADRAO), ...lembrar('filtros', {}) },  // cópia: "Limpar" volta ao padrão
   resultado: null, limite: 300, sel: null, conta: null, subAba: null,
   valores: [], resumo: null, form: null, confirmando: null,
-  buscas: [], avisos: [], buscaAtual: lembrar('buscaAtual', null),
+  buscas: [], avisos: [], buscaAtual: lembrar('buscaAtual', null), grupos: [],
   classesDesenhadas: '', ceusDesenhados: '',
 };
 const valoresPorItem = () => {
@@ -237,12 +238,17 @@ const FORA_DA_BUSCA = new Set(['codice', 'recompra']);
 
 // As condições ficam na ordem em que os itens foram escolhidos (a de importância para quem busca), e as colunas
 // da lista e a aba Pesquisados seguem essa ordem. Ela não muda quem bate nem o preço por unidade (soma de todos).
+// As de "Tem pelo menos um" usam os mesmos campos, mas só filtram: não viram colunas nem entram no preço por unidade.
 function desenharCondicoes() {
-  $('#f-itens').innerHTML = S.filtros.itens.map((c, i) => `
+  $('#f-itens').innerHTML = S.filtros.itens.map(condicaoHtml).join('');
+  $('#f-algum').innerHTML = S.filtros.algum.map(condicaoHtml).join('');
+  desenharOrdens();
+}
+
+function condicaoHtml(c, i) {
+  return `
     <div class="condicao" data-i="${i}">
-      <div class="condicao-topo">${c.item_id ? `<img src="${ICONE(c.item_id)}" alt="" ${SEM_IMG}>` : ''}
-        ${c.item_id ? `<b title="${esc(c.nome)}">${esc(c.nome)}</b>`
-          : `<b title="Qualquer item com “${esc(c.nome)}” no nome">“${esc(c.nome)}” no nome</b>`}<button data-acao="remover" title="Remover"><svg class="ic"><use href="#i-x"/></svg></button></div>
+      <div class="condicao-topo">${tituloDaCondicao(c)}<button data-acao="remover" title="Remover"><svg class="ic"><use href="#i-x"/></svg></button></div>
       <div class="condicao-campos">
         <select class="caixa" data-campo="refino_min" title="Refino mínimo">
           <option value="0">qualquer refino</option>${Array.from({ length: 15 }, (_, n) => `<option value="${n + 1}" ${c.refino_min === n + 1 ? 'selected' : ''}>refino ≥ +${n + 1}</option>`).join('')}
@@ -250,8 +256,19 @@ function desenharCondicoes() {
         <input class="caixa" data-campo="qtd_min" inputmode="numeric" placeholder="quantidade ≥ 1" value="${c.qtd_min > 1 ? c.qtd_min : ''}" title="Quantidade mínima (soma todas as pilhas)">
         <select class="caixa largo" data-campo="onde" title="Onde o item precisa estar">${ONDE.map(([v, t]) => `<option value="${v}" ${(c.onde || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
       </div>
-    </div>`).join('');
-  desenharOrdens();
+    </div>`;
+}
+
+/** Ícone e nome da condição: o item, o texto do nome ou o grupo (com o nome e o número de itens de agora). */
+function tituloDaCondicao(c) {
+  if (c.grupo_id != null) {
+    const g = S.grupos.find(x => x.id === c.grupo_id);
+    return `<span class="icone-grupo" title="Grupo de itens"><svg class="ic"><use href="#i-list"/></svg></span>
+      <b title="Qualquer item do grupo ${esc(g?.nome ?? c.nome)}">${esc(g?.nome ?? c.nome)}</b>
+      <small>${g ? `${inteiro(g.itens.length)} ${g.itens.length === 1 ? 'item' : 'itens'}` : S.gruposCarregados ? 'grupo apagado' : ''}</small>`;
+  }
+  if (c.item_id) return `<img src="${ICONE(c.item_id)}" alt="" ${SEM_IMG}><b title="${esc(c.nome)}">${esc(c.nome)}</b>`;
+  return `<b title="Qualquer item com “${esc(c.nome)}” no nome">“${esc(c.nome)}” no nome</b>`;
 }
 
 /** Com condições de item, a ordenação ganha as opções pelos itens pesquisados (ver _ordenar_por_itens no banco.py). */
@@ -304,26 +321,28 @@ function iniciarFiltros() {
       filtrosMudaram();
     });
   }
-  $('#f-itens').addEventListener('click', e => {
-    if (!e.target.closest('[data-acao="remover"]')) return;
-    const i = Number(e.target.closest('.condicao').dataset.i);
-    S.filtros.itens.splice(i, 1);
-    const porItem = /^item:(\d+)$/.exec(S.filtros.ordem);  // "Mais <item>" segue o item, não a posição
-    if (porItem) {
-      const k = Number(porItem[1]);
-      S.filtros.ordem = k === i ? 'itens' : `item:${k > i ? k - 1 : k}`;
-    }
-    desenharCondicoes();
-    filtrosMudaram();
-  });
-  $('#f-itens').addEventListener('change', e => {
-    const campo = e.target.dataset.campo;
-    if (!campo) return;
-    const c = S.filtros.itens[Number(e.target.closest('.condicao').dataset.i)];
-    c[campo] = campo === 'onde' ? e.target.value : Math.max(campo === 'qtd_min' ? 1 : 0, Math.round(numeroDe(e.target.value) || 0));
-    desenharOrdens();  // o refino aparece no nome das opções "Mais <item>"
-    filtrosMudaram();
-  });
+  for (const [lista, chave] of [['#f-itens', 'itens'], ['#f-algum', 'algum']]) {
+    $(lista).addEventListener('click', e => {
+      if (!e.target.closest('[data-acao="remover"]')) return;
+      const i = Number(e.target.closest('.condicao').dataset.i);
+      S.filtros[chave].splice(i, 1);
+      const porItem = chave === 'itens' && /^item:(\d+)$/.exec(S.filtros.ordem);  // "Mais <item>" segue o item, não a posição
+      if (porItem) {
+        const k = Number(porItem[1]);
+        S.filtros.ordem = k === i ? 'itens' : `item:${k > i ? k - 1 : k}`;
+      }
+      desenharCondicoes();
+      filtrosMudaram();
+    });
+    $(lista).addEventListener('change', e => {
+      const campo = e.target.dataset.campo;
+      if (!campo) return;
+      const c = S.filtros[chave][Number(e.target.closest('.condicao').dataset.i)];
+      c[campo] = campo === 'onde' ? e.target.value : Math.max(campo === 'qtd_min' ? 1 : 0, Math.round(numeroDe(e.target.value) || 0));
+      desenharOrdens();  // o refino aparece no nome das opções "Mais <item>"
+      filtrosMudaram();
+    });
+  }
   $('#limpar-filtros').addEventListener('click', () => {
     S.filtros = structuredClone(FILTROS_PADRAO);
     S.buscaAtual = null;
@@ -332,57 +351,70 @@ function iniciarFiltros() {
     filtrosMudaram();
   });
   $('#salvar-busca').addEventListener('click', abrirModalBusca);
-  seletorDeItem($('#novo-item'), item => {
-    if (!S.filtros.itens.length) S.filtros.ordem = 'itens';  // buscando itens, primeiro quem tem mais
-    S.filtros.itens.push({ item_id: item.item_id, nome: item.nome, refino_min: 0, qtd_min: 1, onde: '' });
-    $('#novo-item').hidden = true;
-    $('#add-cond').hidden = false;
-    desenharCondicoes();
-    filtrosMudaram();
-  }, () => { $('#novo-item').hidden = true; $('#add-cond').hidden = false; }, {
-    titulo: q => `Buscar itens com “${q}” no nome`, sempre: true,
-    nota: 'Vale também para itens que ainda não apareceram nas contas lidas; elas entram conforme forem lidas.',
-  });
-  $('#add-cond').addEventListener('click', () => {
-    $('#novo-item').hidden = false;
-    $('#add-cond').hidden = true;
-    $('#novo-item input').value = '';
-    $('#novo-item .sugestoes').innerHTML = '';
-    $('#novo-item input').focus();
-  });
+  for (const [seletor, botao, chave] of [['#novo-item', '#add-cond', 'itens'], ['#novo-algum', '#add-algum', 'algum']]) {
+    const fechar = () => { $(seletor).hidden = true; $(botao).hidden = false; };
+    seletorDeItem($(seletor), item => {
+      if (chave === 'itens' && !S.filtros.itens.length) S.filtros.ordem = 'itens';  // buscando itens, primeiro quem tem mais
+      const qual = item.grupo_id != null ? { grupo_id: item.grupo_id } : { item_id: item.item_id };
+      S.filtros[chave].push({ ...qual, nome: item.nome, refino_min: 0, qtd_min: 1, onde: '' });
+      fechar();
+      desenharCondicoes();
+      filtrosMudaram();
+    }, fechar, {
+      titulo: q => `Buscar itens com “${q}” no nome`, sempre: true,
+      nota: 'Vale também para itens que ainda não apareceram nas contas lidas; elas entram conforme forem lidas.',
+    }, true);
+    $(botao).addEventListener('click', () => {
+      $(seletor).hidden = false;
+      $(botao).hidden = true;
+      $(`${seletor} input`).value = '';
+      $(`${seletor} .sugestoes`).innerHTML = '';
+      $(`${seletor} input`).focus();
+    });
+  }
 }
 
 /** Caixa de busca de itens com sugestões (catálogo do site + itens vistos nas contas).
  *  porNome ({ titulo(texto), nota, sempre }) oferece usar o texto digitado, para itens que ainda não
- *  apareceram em nenhuma conta lida; com "sempre", a opção aparece mesmo quando há sugestões. */
-function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null) {
+ *  apareceram em nenhuma conta lida; com "sempre", a opção aparece mesmo quando há sugestões.
+ *  comGrupos põe os grupos de itens antes dos itens (todos, com a caixa vazia); escolher um grupo
+ *  devolve { grupo_id, nome, itens }. */
+function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null, comGrupos = false) {
   const entrada = $('input', raiz);
   const lista = $('.sugestoes', raiz);
   let itens = [];
+  let opcoes = [];  // grupos e itens, na ordem da lista (para as setas e o Enter)
   let destaque = 0;
   let seq = 0;
   const desenhar = () => {
     const q = entrada.value.trim();
-    if (q.length < 2) { lista.innerHTML = ''; return; }
+    const grupos = comGrupos ? S.grupos.filter(g => norm(g.nome).includes(norm(q))) : [];
+    opcoes = [...grupos.map(grupo => ({ grupo })), ...(q.length >= 2 ? itens.map(item => ({ item })) : [])];
+    if (!opcoes.length && q.length < 2) { lista.innerHTML = ''; return; }
+    destaque = limitar(destaque, 0, Math.max(0, opcoes.length - 1));
     const marcar = nome => {
-      const i = norm(nome).indexOf(norm(q));
+      const i = q ? norm(nome).indexOf(norm(q)) : -1;
       return i < 0 ? esc(nome) : esc(nome.slice(0, i)) + '<mark>' + esc(nome.slice(i, i + q.length)) + '</mark>' + esc(nome.slice(i + q.length));
     };
-    let html = itens.map((it, i) => `
+    let html = opcoes.map(({ grupo, item }, i) => `
       <button class="sugestao ${i === destaque ? 'on' : ''}" data-i="${i}">
-        <img src="${ICONE(it.item_id)}" alt="" ${SEM_IMG}>
-        <div><b>${marcar(it.nome)}</b><small>${esc(descricaoItem(it))}</small></div>${i === destaque ? '<kbd>Enter</kbd>' : ''}
+        ${grupo ? `<span class="icone-grupo"><svg class="ic"><use href="#i-list"/></svg></span>
+          <div><b>${marcar(grupo.nome)}</b><small>Grupo · qualquer um de ${inteiro(grupo.itens.length)} ${grupo.itens.length === 1 ? 'item' : 'itens'}</small></div>`
+        : `<img src="${ICONE(item.item_id)}" alt="" ${SEM_IMG}>
+          <div><b>${marcar(item.nome)}</b><small>${esc(descricaoItem(item))}</small></div>`}${i === destaque ? '<kbd>Enter</kbd>' : ''}
       </button>`).join('');
-    if (porNome && (porNome.sempre || !itens.some(it => norm(it.nome) === norm(q)))) {
+    if (porNome && q.length >= 2 && (porNome.sempre || !itens.some(it => norm(it.nome) === norm(q)))) {
       html += `<button class="sugestao" data-nome="1"><div><b>${porNome.titulo(esc(q))}</b><small>${porNome.nota}</small></div></button>`;
     }
     if (!html) html = '<div class="sugestao vazia">Nenhum item com esse nome.</div>';
     lista.innerHTML = html;
+    lista.scrollIntoView({ block: 'nearest' });  // no fim do painel, a lista ficaria abaixo da parte visível
   };
+  const escolher =({ grupo, item }) => aoEscolher(grupo ? { grupo_id: grupo.id, nome: grupo.nome, itens: grupo.itens } : item);
   const procurar = debounce(async () => {
     const q = entrada.value.trim();
     const meu = ++seq;
-    if (q.length < 2) { itens = []; desenhar(); return; }
+    if (q.length < 2) { itens = []; destaque = 0; desenhar(); return; }
     try {
       const r = await api('GET', `/api/sugestoes?q=${encodeURIComponent(q)}`);
       if (meu !== seq) return;
@@ -392,14 +424,15 @@ function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null) {
     } catch (err) { avisar(err.message, true); }
   }, 180);
   entrada.addEventListener('input', procurar);
+  if (comGrupos) entrada.addEventListener('focus', desenhar);  // com a caixa vazia, os grupos já aparecem
   entrada.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      destaque = limitar(destaque + (e.key === 'ArrowDown' ? 1 : -1), 0, Math.max(0, itens.length - 1));
+      destaque = limitar(destaque + (e.key === 'ArrowDown' ? 1 : -1), 0, Math.max(0, opcoes.length - 1));
       desenhar();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (itens[destaque]) aoEscolher(itens[destaque]);
+      if (opcoes[destaque]) escolher(opcoes[destaque]);
       else if (porNome && entrada.value.trim().length >= 3) aoEscolher({ item_id: null, nome: entrada.value.trim(), tipo: 'item', contas: 0 });
     } else if (e.key === 'Escape') {
       aoCancelar?.();
@@ -410,10 +443,10 @@ function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null) {
     const b = e.target.closest('.sugestao');
     if (!b || b.classList.contains('vazia')) return;
     if (b.dataset.nome) aoEscolher({ item_id: null, nome: entrada.value.trim(), tipo: 'item', contas: 0 });
-    else aoEscolher(itens[Number(b.dataset.i)]);
+    else escolher(opcoes[Number(b.dataset.i)]);
   });
   entrada.addEventListener('blur', () => setTimeout(() => { if (!raiz.contains(document.activeElement) && !entrada.value.trim()) aoCancelar?.(); }, 150));
-  return { limpar: () => { entrada.value = ''; itens = []; lista.innerHTML = ''; }, focar: () => entrada.focus() };
+  return { limpar: () => { entrada.value = ''; itens = []; opcoes = []; lista.innerHTML = ''; }, focar: () => entrada.focus() };
 }
 
 const TIPOS = { livros: 'Livro', armas: 'Arma', cartas: 'Carta', pedra: 'Pedra engastada', elmos: 'Elmo', peitorais: 'Peitoral',
@@ -433,33 +466,38 @@ async function buscar() {
   try {
     const r = await api('POST', '/api/buscar', S.filtros);
     if (meu !== buscaSeq) return;
-    const antes = JSON.stringify(itensDaBusca());
+    const condicoes = () => JSON.stringify([itensDaBusca(), algumDaBusca()]);
+    const antes = condicoes();
     S.resultado = r;
     desenharLista();
-    if (S.conta && JSON.stringify(r.busca_itens) !== antes) {  // a aba "Pesquisados" acompanha a busca
-      if (antes === '[]') S.subAba = 'busca';
+    if (S.conta && condicoes() !== antes) {  // a aba "Pesquisados" acompanha a busca
+      if (antes === '[[],[]]') S.subAba = 'busca';
       desenharDetalhes();
     }
   } catch (err) { avisar(err.message, true); }
 }
 
 // ---------------------------------------------------------------- itens pesquisados
-// Condições de item da última busca, como o servidor devolveu (busca_itens).
+// Condições de item da última busca, como o servidor devolveu: "Tem item" (busca_itens) e "Tem pelo menos um" (busca_algum).
 const itensDaBusca = () => S.resultado?.busca_itens || [];
+const algumDaBusca = () => S.resultado?.busca_algum || [];
 const somaBusca = c => (c.qtd_busca ? c.qtd_busca.reduce((s, q) => s + q, 0) : null);
 const curto = n => n.toLocaleString('pt-BR', { maximumSignificantDigits: 3 });
 
-/** O item atende à condição? Mesma regra do servidor (mercado/banco.py, _filtro_item):
- *  pelo id do item ou, na condição digitada pelo nome, qualquer item com esse texto no nome. */
+/** O item atende à condição? Mesma regra do servidor (mercado/banco.py, _filtro_item): pelo id do item,
+ *  por qualquer item do grupo (itens, que o servidor devolve) ou, na condição digitada pelo nome, por qualquer
+ *  item com esse texto no nome. */
 function bateCondicao(it, c) {
-  if (c.item_id != null ? it.item_id !== c.item_id : !norm(it.nome).includes(norm(c.nome))) return false;
+  const qual = c.grupo_id != null ? (c.itens || []).includes(it.item_id)
+    : c.item_id != null ? it.item_id === c.item_id : norm(it.nome).includes(norm(c.nome));
+  if (!qual) return false;
   const secao = SECAO_DO_ONDE[c.onde];
   return (it.refino || 0) >= c.refino_min && (secao ? it.secao === secao : !FORA_DA_BUSCA.has(it.secao));
 }
 
 /** Para cada condição da busca: os itens da conta que a atendem, o total de unidades e onde estão. */
-function pesquisadosNaConta(d) {
-  return itensDaBusca().map(c => {
+function pesquisadosNaConta(d, condicoes = itensDaBusca()) {
+  return condicoes.map(c => {
     const achados = d.itens.map((it, i) => [it, i]).filter(([it]) => bateCondicao(it, c));
     const porSecao = new Map();
     for (const [it] of achados) porSecao.set(it.secao, (porSecao.get(it.secao) || 0) + it.qtd);
@@ -490,7 +528,10 @@ const casasReais = valores => (valores.some(v => v != null && Math.abs(v) >= 100
 
 function porUnidadeHtml(c, casas) {
   const soma = somaBusca(c);
-  if (soma) return `<td class="num">${decimal(c.preco / soma, casas)}</td>`;
+  if (soma) {  // embaixo, como no preço: o mesmo cálculo com o lance mínimo
+    return `<td class="num">${decimal(c.preco / soma, casas)}<span class="sub" title="Por unidade com o lance mínimo `
+      + `(${LANCE_MINIMO_PCT}% do preço)">mín. ${decimal(lanceMinimo(c.preco) / soma, casas)}</span></td>`;
+  }
   return soma == null ? '<td class="num" title="Os itens desta conta ainda não foram lidos"><span class="dim">?</span></td>'
     : '<td class="num"><span class="dim">—</span></td>';
 }
@@ -609,7 +650,8 @@ async function selecionar(id, rolar = false) {
     const mesma = S.conta && S.conta.anuncio.id === id;
     S.conta = d;
     if (!mesma || !S.subAba) {
-      S.subAba = itensDaBusca().length ? 'busca' : d.itens.some(i => i.secao === 'equipado') ? 'equipado' : 'inventario';
+      S.subAba = itensDaBusca().length || algumDaBusca().length ? 'busca'
+        : d.itens.some(i => i.secao === 'equipado') ? 'equipado' : 'inventario';
     }
     desenharDetalhes();
   } catch (err) {
@@ -658,9 +700,10 @@ function desenharDetalhes() {
     const contagem = {};
     for (const it of d.itens) contagem[abaDoItem(it)] = (contagem[abaDoItem(it)] || 0) + 1;
     const abas = ABAS_CONTA.filter(([k]) => contagem[k]);
-    if (itensDaBusca().length) {  // aparece mesmo se a conta não tiver nenhum dos itens pesquisados
+    if (itensDaBusca().length || algumDaBusca().length) {  // aparece mesmo se a conta não tiver nenhum dos itens pesquisados
       abas.unshift(['busca', 'Pesquisados']);
-      contagem.busca = qtdCurta(pesquisadosNaConta(d).reduce((s, p) => s + p.total, 0));
+      contagem.busca = qtdCurta([...pesquisadosNaConta(d), ...pesquisadosNaConta(d, algumDaBusca())]
+        .reduce((s, p) => s + p.total, 0));
     }
     if (!abas.some(([k]) => k === S.subAba)) S.subAba = abas[0]?.[0] || 'equipado';
     conteudo = `<div class="sub-abas">${abas.map(([k, t]) =>
@@ -727,28 +770,38 @@ function conteudoSubAba(d) {
   return `<div class="slots">${itens.map(([it, i]) => slotHtml(it, i, indice)).join('')}</div>`;
 }
 
-/** Aba "Pesquisados": quanto a conta tem de cada item da busca, onde estão e os próprios itens. */
+/** Aba "Pesquisados": quanto a conta tem de cada item da busca, onde estão e os próprios itens.
+ *  Os do "Tem pelo menos um" vêm num grupo à parte, com os que a conta tem; os que ela não tem ficam numa linha só.
+ *  O total e o preço por unidade continuam só com os do "Tem item". */
 function conteudoPesquisados(d, indice) {
   const lista = pesquisadosNaConta(d);
+  const algum = pesquisadosNaConta(d, algumDaBusca());
   const total = lista.reduce((s, p) => s + p.total, 0);
-  const linhas = lista.map(p => {
-    // condição digitada pelo nome: se ela achou um item só, mostra o nome e o ícone dele
-    const unico = p.c.item_id == null && new Set(p.achados.map(([it]) => it.item_id)).size === 1 ? p.achados[0][0] : null;
-    const nome = p.c.item_id != null ? p.c.nome : unico ? unico.nome : `“${p.c.nome}” no nome`;
-    return `
+  const soma = total ? `<div class="soma-busca">${lista.length > 1 ? `Total: <b>${inteiro(total)}</b> · ` : ''}`
+    + `${curto(d.anuncio.preco / total)} TCC por unidade · <span title="Por unidade com o lance mínimo (${LANCE_MINIMO_PCT}% do preço)">`
+    + `mín. ${curto(lanceMinimo(d.anuncio.preco) / total)}</span></div>` : '';
+  const falta = algum.filter(p => !p.total).map(p => nomeDaCondicao(p.c) + (p.c.refino_min ? ' ≥ +' + p.c.refino_min : ''));
+  const grupo = algum.length ? `<div class="grupo-secao">Tem pelo menos um</div>${algum.filter(p => p.total).map(linhaPesquisado).join('')}`
+    + (falta.length ? `<div class="dim nao-tem">${algum.length === falta.length ? 'Não tem nenhum: ' : 'Não tem: '}${esc(falta.join(', '))}</div>` : '') : '';
+  const achados = new Map([...lista, ...algum].flatMap(p => p.achados).map(([it, i]) => [i, it]));  // um item pode atender a duas condições
+  const slots = [...achados].sort((a, b) => a[0] - b[0]).map(([i, it]) => slotHtml(it, i, indice)).join('');
+  return `<div class="origem">${lista.map(linhaPesquisado).join('')}${soma}${grupo}</div>${slots ? `<div class="slots">${slots}</div>` : ''}`;
+}
+
+const nomeDaCondicao = c => (c.grupo_id != null ? `grupo ${c.nome}` : c.item_id != null ? c.nome : `“${c.nome}” no nome`);
+
+/** Linha da aba Pesquisados: o item da condição, onde a conta o tem e quantas unidades. */
+function linhaPesquisado(p) {
+  // condição de grupo ou digitada pelo nome: se ela achou um item só, mostra o nome e o ícone dele
+  const unico = p.c.item_id == null && new Set(p.achados.map(([it]) => it.item_id)).size === 1 ? p.achados[0][0] : null;
+  return `
     <div class="origem-linha">
-      <img src="${ICONE(p.c.item_id ?? unico?.item_id)}" alt="" ${SEM_IMG}>
-      <div><b>${esc(nome)}${p.c.refino_min ? ' ≥ +' + p.c.refino_min : ''}</b>
-        <small>${p.total ? [...p.porSecao].map(([s, q]) => `${esc(NOMES_SECAO[s] || s)}: ${inteiro(q)}`).join(' · ')
+      <img src="${ICONE(p.c.item_id ?? (unico || p.achados[0]?.[0])?.item_id)}" alt="" ${SEM_IMG}>
+      <div><b>${esc(unico ? unico.nome : nomeDaCondicao(p.c))}${p.c.refino_min ? ' ≥ +' + p.c.refino_min : ''}</b>
+        <small>${p.c.grupo_id != null && unico ? `${esc(p.c.nome)} · ` : ''}${p.total ? [...p.porSecao].map(([s, q]) => `${esc(NOMES_SECAO[s] || s)}: ${inteiro(q)}`).join(' · ')
           + (p.refinos.length ? ' · refino ' + p.refinos.map(r => '+' + r).join(', ') : '') : 'Esta conta não tem.'}</small></div>
       <div class="num"><b>${inteiro(p.total)}</b></div>
     </div>`;
-  }).join('');
-  const soma = total ? `<div class="soma-busca">${lista.length > 1 ? `Total: <b>${inteiro(total)}</b> · ` : ''}`
-    + `${curto(d.anuncio.preco / total)} TCC por unidade</div>` : '';
-  const achados = new Map(lista.flatMap(p => p.achados).map(([it, i]) => [i, it]));  // um item pode atender a duas condições
-  const slots = [...achados].sort((a, b) => a[0] - b[0]).map(([i, it]) => slotHtml(it, i, indice)).join('');
-  return `<div class="origem">${linhas}${soma}</div>${slots ? `<div class="slots">${slots}</div>` : ''}`;
 }
 
 function iniciarDetalhes() {
@@ -1162,9 +1215,9 @@ function pillsDosFiltros(f) {
   else if (f.preco_min != null) p.push(`a partir de ${inteiro(f.preco_min)} TCC`);
   if (f.nivel_min) p.push(`nível ≥ ${f.nivel_min}`);
   if (f.ceu) p.push(`Céu ${f.ceu}`);
-  for (const c of f.itens || []) {
-    p.push(`${c.qtd_min > 1 ? inteiro(c.qtd_min) + '× ' : ''}${c.nome}${c.refino_min ? ' ≥ +' + c.refino_min : ''}${c.onde ? ' · ' + (ONDE.find(o => o[0] === c.onde)?.[1] || c.onde) : ''}`);
-  }
+  const condicao = c => `${c.qtd_min > 1 ? inteiro(c.qtd_min) + '× ' : ''}${c.grupo_id != null ? 'grupo ' : ''}${c.nome}${c.refino_min ? ' ≥ +' + c.refino_min : ''}${c.onde ? ' · ' + (ONDE.find(o => o[0] === c.onde)?.[1] || c.onde) : ''}`;
+  for (const c of f.itens || []) p.push(condicao(c));
+  if (f.algum?.length) p.push(`pelo menos um: ${f.algum.map(condicao).join(', ')}`);
   if (f.so_lucro) p.push('só com lucro');
   if (f.so_novas) p.push('só novas');
   return p.length ? p.map(t => `<span class="pill">${esc(t)}</span>`).join('') : '<span class="pill">todas as contas</span>';
@@ -1266,7 +1319,9 @@ function abrirModalBusca(existente) {
 }
 function sugestaoDeNome(f) {
   const partes = [];
-  if (f.itens?.length) partes.push(f.itens.map(c => c.nome + (c.refino_min ? ' +' + c.refino_min : '')).join(' e '));
+  const nome = c => c.nome + (c.refino_min ? ' +' + c.refino_min : '');
+  if (f.itens?.length) partes.push(f.itens.map(nome).join(' e '));
+  if (f.algum?.length) partes.push(f.algum.map(nome).join(' ou '));
   if (f.classes?.length) partes.push(f.classes.join('/'));
   if (f.preco_max != null) partes.push(`até ${inteiro(f.preco_max)} TCC`);
   return partes.join(' · ').slice(0, 60) || 'Minha busca';
@@ -1316,6 +1371,96 @@ function iniciarModalBusca() {
     } catch (err) {
       if (/não encontrad/i.test(err.message) && S.buscaAtual) { S.buscaAtual = null; guardar('buscaAtual', null); }
       avisar(err.message, true);
+    }
+  });
+}
+
+// ================================================================ grupos de itens
+// Um grupo junta itens buscados juntos, como as armas de um rank, que têm um nome em cada classe.
+// Na busca ele vira uma condição só, que vale para qualquer item dele.
+async function carregarGrupos() {
+  try {
+    S.grupos = (await api('GET', '/api/grupos')).grupos;
+    S.gruposCarregados = true;
+  } catch (err) { avisar(err.message, true); }
+  desenharCondicoes();  // os cartões de grupo mostram o nome e o número de itens de agora
+  if (!$('#modal-grupos').hidden) desenharGrupos();
+}
+
+/** focar: { id, campo: 'nome' | 'item' } põe o cursor no nome ou na caixa de adicionar desse grupo. */
+function desenharGrupos(focar = null) {
+  const lista = $('#lista-grupos');
+  lista.innerHTML = S.grupos.length ? S.grupos.map(g => `
+    <div class="grupo" data-id="${g.id}">
+      <div class="grupo-topo">
+        <span class="icone-grupo"><svg class="ic"><use href="#i-list"/></svg></span>
+        <input class="caixa" data-campo="nome" value="${esc(g.nome)}" maxlength="60" title="Nome do grupo" autocomplete="off">
+        <span class="dim">${inteiro(g.itens.length)} ${g.itens.length === 1 ? 'item' : 'itens'}</span>
+        ${S.confirmando === `g${g.id}` ? `<span>Apagar o grupo?</span>
+          <button class="btn pequeno perigo" data-acao="sim">Apagar</button><button class="btn pequeno fantasma" data-acao="nao">Não</button>`
+        : '<button class="icone-btn sem-borda pequeno" data-acao="apagar" title="Apagar o grupo"><svg class="ic"><use href="#i-trash"/></svg></button>'}
+      </div>
+      <div class="grupo-itens">${g.itens.map(it => `<span class="pill" title="${esc(it.nome)}"><img src="${ICONE(it.item_id)}" alt="" ${SEM_IMG}>${esc(it.nome)}<button data-acao="tirar" data-item="${it.item_id}" title="Tirar do grupo"><svg class="ic"><use href="#i-x"/></svg></button></span>`).join('')
+        || '<span class="dim">Nenhum item ainda: adicione abaixo.</span>'}</div>
+      <div class="seletor-item"><div class="entrada"><svg class="ic"><use href="#i-search"/></svg><input placeholder="Adicionar item ao grupo…" autocomplete="off"></div><div class="sugestoes"></div></div>
+    </div>`).join('')
+    : '<div class="vazio-valores"><b>Nenhum grupo ainda.</b>Crie um com “Novo grupo”.</div>';
+  for (const card of $$('.grupo', lista)) {
+    const g = S.grupos.find(x => x.id === Number(card.dataset.id));
+    seletorDeItem($('.seletor-item', card), item => salvarGrupo(g, { itens: [...g.itens, { item_id: item.item_id, nome: item.nome }] }, 'item'));
+  }
+  if (focar) $(`.grupo[data-id="${focar.id}"] ${focar.campo === 'nome' ? 'input[data-campo="nome"]' : '.seletor-item input'}`, lista)?.focus();
+}
+
+/** Grava o grupo com as mudanças; focar ('nome' | 'item') volta o cursor para ele, para adicionar o próximo item. */
+async function salvarGrupo(g, mudancas, focar = null) {
+  try {
+    await api('PUT', `/api/grupos/${g.id}`, { nome: g.nome, itens: g.itens, ...mudancas });
+  } catch (err) { avisar(err.message, true); }
+  await carregarGrupos();
+  if (focar) desenharGrupos({ id: g.id, campo: focar });
+}
+
+function iniciarGrupos() {
+  const modal = $('#modal-grupos');
+  const lista = $('#lista-grupos');
+  $('#abrir-grupos').addEventListener('click', () => {
+    S.confirmando = null;
+    modal.hidden = false;
+    desenharGrupos();
+  });
+  $('#novo-grupo').addEventListener('click', async () => {
+    let nome = 'Novo grupo';
+    for (let n = 2; S.grupos.some(g => g.nome === nome); n++) nome = `Novo grupo ${n}`;
+    try {
+      const { id } = await api('POST', '/api/grupos', { nome, itens: [] });
+      await carregarGrupos();
+      desenharGrupos({ id, campo: 'nome' });
+      $(`.grupo[data-id="${id}"] input[data-campo="nome"]`, lista)?.select();
+    } catch (err) { avisar(err.message, true); }
+  });
+  lista.addEventListener('change', e => {
+    if (e.target.dataset.campo !== 'nome') return;
+    const g = S.grupos.find(x => x.id === Number(e.target.closest('.grupo').dataset.id));
+    salvarGrupo(g, { nome: e.target.value.trim() });
+  });
+  lista.addEventListener('click', async e => {
+    const acao = e.target.closest('[data-acao]')?.dataset.acao;
+    if (!acao) return;
+    const g = S.grupos.find(x => x.id === Number(e.target.closest('.grupo').dataset.id));
+    if (acao === 'tirar') {
+      const item = Number(e.target.closest('[data-item]').dataset.item);
+      salvarGrupo(g, { itens: g.itens.filter(it => it.item_id !== item) });
+    } else if (acao === 'apagar' || acao === 'nao') {
+      S.confirmando = acao === 'apagar' ? `g${g.id}` : null;
+      desenharGrupos();
+    } else if (acao === 'sim') {
+      S.confirmando = null;
+      try {
+        await api('DELETE', `/api/grupos/${g.id}`);
+        avisar('Grupo apagado.');
+      } catch (err) { avisar(err.message, true); }
+      carregarGrupos();
     }
   });
 }
@@ -1426,6 +1571,7 @@ async function iniciar() {
   iniciarValores();
   iniciarBuscas();
   iniciarModalBusca();
+  iniciarGrupos();
   iniciarConfig();
   preencherFiltros();
   desenharDetalhes();
@@ -1433,6 +1579,7 @@ async function iniciar() {
     S.config = await api('GET', '/api/config');
     aplicarLarguras(S.config);
   } catch { /* segue com o padrão */ }
+  await carregarGrupos();
   await atualizarEstado();
   await carregarValores(false);
   carregarBuscas();

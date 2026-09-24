@@ -233,6 +233,14 @@ class Avisos(BaseColetor):
         self.assertEqual(len(self.avisos), 1)
         self.assertIn('baixou de 15.000 TCC para 12.000 TCC', self.avisos[0][2])
 
+    def test_busca_com_pelo_menos_um_item(self):
+        self.banco.salvar_busca({'nome': 'Arma do rank', 'avisar': True, 'filtros': {'algum': [
+            {'item_id': 999, 'nome': 'Arma de outra classe'}, {'item_id': COSMOS, 'nome': 'Cosmos', 'refino_min': 10}]}},
+            self.busca)
+        self.reanunciar(231216)
+        self.ler_tudo_da_fila()
+        self.assertEqual([a[0] for a in self.avisos], ['15.000 TCC · Arma do rank'])
+
     def test_busca_sem_aviso(self):
         self.banco.salvar_busca({'nome': 'Cosmos +10', 'avisar': False, 'filtros': {}}, self.busca)
         self.reanunciar(231216)
@@ -246,6 +254,10 @@ class Avisos(BaseColetor):
         self.assertEqual(len(self.site.buscas), 1)  # veio do cache
         self.assertIsNone(self.coletor.ids_do_site({'item_id': 38154}))  # fora do catálogo
         self.assertIsNone(self.coletor.ids_do_site({'nome': 'Pedra Perfeita'}))
+        # grupo: uma busca só, com os equipamentos do catálogo que estão nele
+        self.assertEqual(self.coletor.ids_do_site({'grupo_id': 1, 'itens': [38154, COSMOS]}), {231216, 3152})
+        self.assertEqual(self.site.buscas[-1], ((COSMOS,), None))
+        self.assertIsNone(self.coletor.ids_do_site({'grupo_id': 2, 'itens': [38154]}))
 
 
 if __name__ == '__main__':

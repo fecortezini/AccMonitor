@@ -4,6 +4,7 @@
     py -m mercado --sem-janela  só o servidor, mostrando o endereço (para testes)
 """
 import argparse
+import ctypes
 import json
 import logging
 import logging.handlers
@@ -14,6 +15,7 @@ import sys
 import time
 import urllib.request
 import webbrowser
+from ctypes import wintypes
 from pathlib import Path
 
 from .banco import Banco
@@ -22,9 +24,11 @@ from .servidor import App, iniciar
 
 PASTA = Path(__file__).resolve().parent.parent
 ARQ_BANCO = PASTA / 'mercado.db'
+ARQ_DADOS = PASTA / 'meus-dados.json'  # tabela de valores, buscas e configurações; vai pelo git para os outros PCs
 ARQ_LOG = PASTA / 'mercado.log'
 ARQ_INSTANCIA = PASTA / '.instancia.json'
 PERFIL_JANELA = PASTA / '.janela'
+TITULO_JANELA = 'Mercado PW'  # o <title> da página, que o Edge usa como título da janela
 log = logging.getLogger('mercado')
 
 
@@ -68,29 +72,80 @@ def instancia_aberta():
         return None
 
 
-def esperar_janela_fechar(processo, app):
-    """Espera o usuário fechar a janela.
+if sys.platform == 'win32':
+    _user32 = ctypes.WinDLL('user32')
+    _CADA_JANELA = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    _user32.EnumWindows.argtypes = [_CADA_JANELA, wintypes.LPARAM]
+    _user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    _user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    _user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
 
-    Enquanto o processo do Edge estiver vivo, a janela está aberta (mesmo minimizada).
-    Sem processo para acompanhar (navegador padrão), vale o sinal que a página manda a cada 15 s.
+
+def janela_aberta(pid=None):
+    """True se a janela do programa está aberta, mesmo minimizada ou atrás de outra; None se não der para saber.
+
+    Com o pid do Edge que abrimos, vale qualquer janela dele: a do programa ou uma do "Abrir no site".
+    Sem o pid, vale a janela com o título da página.
     """
-    inicio = time.monotonic()
+    if sys.platform != 'win32':
+        return None
+    achou = False
+
+    def cada(hwnd, _):
+        nonlocal achou
+        titulo = ctypes.create_unicode_buffer(256)
+        if _user32.IsWindowVisible(hwnd) and _user32.GetWindowTextW(hwnd, titulo, 256):
+            if pid is None:
+                achou = titulo.value == TITULO_JANELA
+            else:
+                dono = wintypes.DWORD()
+                _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(dono))
+                achou = dono.value == pid
+        return not achou  # para na primeira que achar
+
+    try:
+        _user32.EnumWindows(_CADA_JANELA(cada), 0)
+    except OSError:
+        return None
+    return achou
+
+
+def esperar_janela_fechar(processo, app, janela=janela_aberta, dormir=time.sleep):
+    """Espera o usuário fechar a janela e devolve o motivo, que vai para o log.
+
+    Com o Edge, o programa segue enquanto a janela existir, mesmo minimizada ou atrás do jogo. O sinal que a
+    página manda a cada 15 s não serve para isso: o Edge para as páginas escondidas, e o sinal some. Ele só
+    vale no navegador padrão, onde não há janela para olhar. Os tempos são contados em voltas de 1 s, e não
+    pelo relógio, para uma suspensão do Windows não contar como tempo sem janela ou sem sinal.
+    """
+    com_edge = processo is not None
+    voltas = sem_janela = sem_sinal = 0
+    sinal = app.ultimo_sinal
     while True:
-        time.sleep(1)
-        agora, sinal = time.monotonic(), app.ultimo_sinal
+        dormir(1)
+        voltas += 1
+        if app.ultimo_sinal != sinal:
+            if sem_sinal >= 600:
+                log.info('A página voltou a mandar sinal depois de %d min parada', sem_sinal // 60)
+            sinal, sem_sinal = app.ultimo_sinal, 0
+        else:
+            sem_sinal += 1
+        if processo is not None and processo.poll() is not None:
+            if voltas > 15:
+                return 'a janela foi fechada'
+            processo = None  # saiu logo de cara: outro Edge do mesmo perfil ficou com a janela, achada pelo título
+        aberta = janela(processo.pid if processo else None) if com_edge else None
+        if aberta is not None:
+            if aberta and sem_sinal == 600:  # só para o log: mostra quando o Edge para a página escondida
+                log.info('A página não manda sinal há 10 min, mas a janela continua aberta')
+            sem_janela = 0 if aberta else sem_janela + 1
+            if sem_janela >= 30 and voltas > 60:
+                return 'o Edge ficou aberto sem a janela do programa' if processo else 'a janela foi fechada'
+            continue
         if processo is not None:
-            if processo.poll() is None:
-                if sinal is not None and agora - sinal > 600:  # Edge vivo mas página morta há 10 min
-                    processo.terminate()
-                    return
-                continue
-            if agora - inicio > 15:  # a janela que abrimos foi fechada
-                return
-            processo = None  # saiu logo de cara: outro Edge com o mesmo perfil ficou com a janela
-        if sinal is None and agora - inicio > 120:
-            return
-        if sinal is not None and agora - sinal > 180:
-            return
+            continue  # sem como ver as janelas: vale o processo do Edge, que está vivo
+        if sem_sinal >= (180 if sinal is not None else 120):
+            return 'a página parou de mandar sinal' if sinal is not None else 'a página não abriu'
 
 
 def main():
@@ -106,7 +161,7 @@ def main():
         abrir_janela(f"http://127.0.0.1:{aberta['porta']}/")
         return
 
-    banco = Banco(ARQ_BANCO)
+    banco = Banco(ARQ_BANCO, ARQ_DADOS)
     if limpas := banco.limpar_antigos():
         log.info('Itens de %d anúncios antigos apagados', limpas)
     estado = Estado()
@@ -123,7 +178,7 @@ def main():
             while True:
                 time.sleep(3600)
         processo = abrir_janela(url)
-        esperar_janela_fechar(processo, app)
+        log.info('Encerrando porque %s', esperar_janela_fechar(processo, app))
     except KeyboardInterrupt:
         pass
     finally:

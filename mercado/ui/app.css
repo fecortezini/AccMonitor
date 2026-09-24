@@ -145,6 +145,22 @@ input::placeholder { color: #566077; }
 .sugestao + .sugestao { border-top: 1px solid var(--ln); }
 .sugestao:hover, .sugestao.on { background: var(--s4); }
 .sugestao img { width: 28px; height: 28px; border-radius: 6px; background: #0a0c11; border: 1px solid var(--ln2); flex-shrink: 0; }
+/* Grupos de itens: o ícone de lista faz as vezes do ícone do item */
+.icone-grupo { width: 26px; height: 26px; border-radius: 6px; background: var(--s3); border: 1px solid var(--ln2); color: var(--ouro2); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sugestao .icone-grupo { width: 28px; height: 28px; }
+.condicao-topo small { flex-shrink: 0; font-size: 11px; color: var(--tx3); }
+.campo-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.link.fino { font-size: 11.5px; }
+#lista-grupos { display: flex; flex-direction: column; gap: 10px; }
+.grupos-ajuda { margin: 10px 0 0; font-size: 12.5px; }
+.grupo { background: var(--s2); border: 1px solid var(--ln2); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.grupo-topo { display: flex; align-items: center; gap: 8px; }
+.grupo-topo .caixa { flex: 1; min-width: 0; height: 32px; }
+.grupo-itens { display: flex; flex-wrap: wrap; gap: 5px; }
+.grupo-itens .pill img { width: 16px; height: 16px; border-radius: 3px; background: #0a0c11; }
+.grupo-itens .pill button { display: flex; color: var(--tx3); }
+.grupo-itens .pill button:hover { color: var(--tx); }
+.grupo-itens .pill svg.ic { width: 12px; height: 12px; }
 .sugestao div { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .sugestao b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sugestao small { color: var(--tx3); font-size: 11.5px; }
@@ -239,6 +255,8 @@ input::placeholder { color: #566077; }
 .soma-busca b { color: var(--tx); font-variant-numeric: tabular-nums; }
 #sub-conteudo .origem + .slots { margin-top: 12px; }
 .grupo-secao { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--tx3); font-weight: 600; margin: 4px 0 -4px; }
+.origem .grupo-secao { margin: 10px 0 0; }  /* "Tem pelo menos um" na aba Pesquisados */
+.nao-tem { font-size: 12px; padding: 4px 0; }
 .pedras { display: flex; flex-direction: column; }
 .pedra { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--ln); }
 .pedra img { width: 26px; height: 26px; }

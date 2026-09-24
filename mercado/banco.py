@@ -1,16 +1,25 @@
-"""Banco local (SQLite) do Mercado PW: anúncios, itens das contas, tabela de valores, buscas e avisos."""
+"""Banco local (SQLite) do Mercado PW: anúncios, itens das contas, tabela de valores, buscas e avisos.
+
+A tabela de valores, as buscas e as configurações também ficam no meus-dados.json, que vai pelo git
+para os outros PCs (ver Banco.sincronizar). O resto é de cada PC: as contas, o coletor lê do site.
+"""
 import hashlib
 import json
+import logging
+import os
 import sqlite3
 import statistics
 import threading
 import zlib
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from . import valor
 from .site import norm
+
+log = logging.getLogger('mercado')
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS anuncios (
@@ -63,6 +72,11 @@ CREATE TABLE IF NOT EXISTS avisos (
 );
 
 CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS grupos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, itens TEXT NOT NULL,
+    criado_em TEXT NOT NULL, atualizado_em TEXT NOT NULL
+);
 """
 
 PADROES = {
@@ -74,6 +88,14 @@ PADROES = {
 LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'leituras_simultaneas': (1, 2),
            'rs_por_bi': (0.01, 10_000_000), 'rs_por_tcc': (0.01, 100_000),
            'largura_filtros': (15, 45), 'largura_detalhes': (20, 50)}
+# Ficam só em cada PC, fora do meus-dados.json: o tamanho dos painéis (a tela pode ser outra) e os
+# tokens do Telegram e do Discord (o arquivo vai para o git)
+SO_NESTE_PC = frozenset({'largura_filtros', 'largura_detalhes', 'detalhes_recolhidos',
+                         'telegram_token', 'telegram_chat', 'discord_webhook'})
+COMPARTILHADAS = tuple(k for k in PADROES if k not in SO_NESTE_PC)
+FORMATO_DADOS = 1  # versão do meus-dados.json
+_GRAVAR_CONFIG = ('INSERT INTO config(chave, valor) VALUES (?, ?) '
+                  'ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
 
 # Campo "onde" das condições de item -> seções do banco (None = qualquer lugar da conta)
 ONDE = {'equipado': ('equipado',), 'mochila': ('inventario',), 'banco': ('banco',),
@@ -110,11 +132,29 @@ def _marcadores(n):
 
 
 def _condicao(c):
-    """Condição de item da busca com os campos já no formato certo (a interface recebe de volta)."""
+    """Condição de item da busca com os campos já no formato certo (a interface recebe de volta).
+
+    Ela é de um item (item_id), de parte do nome (nome) ou de um grupo de itens (grupo_id), que vale
+    para qualquer item do grupo: ver Banco._resolver_grupos.
+    """
     item_id = c.get('item_id')
-    return {'item_id': int(item_id) if item_id else None, 'nome': str(c.get('nome') or ''),
-            'refino_min': int(_numero(c.get('refino_min')) or 0),
+    return {'item_id': int(item_id) if item_id else None, 'grupo_id': _inteiro(c.get('grupo_id')),
+            'nome': str(c.get('nome') or ''), 'refino_min': int(_numero(c.get('refino_min')) or 0),
             'qtd_min': max(1, int(_numero(c.get('qtd_min')) or 1)), 'onde': str(c.get('onde') or '')}
+
+
+def _condicoes(lista):
+    """Condições de item de uma lista dos filtros, só as que têm o item, o grupo ou um texto do nome."""
+    return [_condicao(c) for c in (lista or [])
+            if isinstance(c, dict) and (c.get('item_id') or c.get('grupo_id') or norm(c.get('nome')))]
+
+
+def _lidas_ou_do_site(sub, site):
+    """Contas lidas que estão na subconsulta e, das ainda não lidas, as que a busca do site aponta (site None: nenhuma)."""
+    if site is None:
+        return f'(a.itens_lidos_em IS NOT NULL AND a.id IN ({sub}))'
+    lista = ','.join(str(int(i)) for i in site) or 'NULL'
+    return f'((a.itens_lidos_em IS NOT NULL AND a.id IN ({sub})) OR (a.itens_lidos_em IS NULL AND a.id IN ({lista})))'
 
 
 def _ordem_por_itens(ordem):
@@ -140,13 +180,131 @@ def _ordenar_por_itens(contas, ordem):
     contas.sort(key=chave)
 
 
+def _limpar_config(mudancas):
+    """Configurações conhecidas, no tipo certo e dentro dos limites; as outras chaves são ignoradas."""
+    limpo = {}
+    for chave, v in (mudancas or {}).items():
+        padrao = PADROES.get(chave)
+        if padrao is None:
+            continue
+        if isinstance(padrao, bool):
+            v = bool(v)
+        elif isinstance(padrao, (int, float)):
+            v = _numero(v)
+            if v is None:
+                continue
+            lo, hi = LIMITES.get(chave, (float('-inf'), float('inf')))
+            v = min(max(v, lo), hi)
+            v = int(round(v)) if isinstance(padrao, int) else round(v, 2)
+        else:
+            v = str(v or '').strip()
+        limpo[chave] = v
+    return limpo
+
+
+# ------------------------------------------------------------------ meus-dados.json
+
+def _inteiro(v):
+    """Id (inteiro positivo) ou None."""
+    if isinstance(v, str) and v.strip().isdigit():
+        v = int(v)
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+
+
+def _dicts(v):
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def _numerar(linhas):
+    """Dá um id novo às linhas sem id ou com id repetido (pode acontecer ao juntar mudanças de dois PCs no git)."""
+    vistos, proximo = set(), max((l['id'] or 0 for l in linhas), default=0) + 1
+    for l in linhas:
+        if l['id'] is None or l['id'] in vistos:
+            l['id'], proximo = proximo, proximo + 1
+        vistos.add(l['id'])
+    linhas.sort(key=lambda l: l['id'])
+
+
+def _normalizar(dados):
+    """Dados compartilhados (lidos do arquivo ou do banco) num formato só, para comparar, gravar e importar."""
+    if not isinstance(dados, dict):
+        raise ValueError('o conteúdo não é um objeto JSON')
+    if (_inteiro(dados.get('formato')) or 1) > FORMATO_DADOS:
+        raise ValueError('foi gravado por uma versão mais nova do programa; atualize com git pull')
+    recebidas = dados.get('configuracoes') if isinstance(dados.get('configuracoes'), dict) else {}
+    cfg = {k: PADROES[k] for k in COMPARTILHADAS}
+    cfg.update(_limpar_config({k: v for k, v in recebidas.items() if k in cfg}))
+    valores = []
+    for v in _dicts(dados.get('valores')):
+        nome, kk = str(v.get('nome') or '').strip(), _numero(v.get('valor_kk'))
+        if nome and kk is not None and kk > 0:
+            valores.append({'id': _inteiro(v.get('id')), 'item_id': _inteiro(v.get('item_id')), 'nome': nome,
+                            'refino_min': min(max(int(_numero(v.get('refino_min')) or 0), 0), 20), 'valor_kk': kk,
+                            'criado_em': str(v.get('criado_em') or ''),
+                            'atualizado_em': str(v.get('atualizado_em') or '')})
+    buscas = []
+    for b in _dicts(dados.get('buscas')):
+        nome, filtros = str(b.get('nome') or '').strip(), b.get('filtros')
+        if nome:
+            buscas.append({'id': _inteiro(b.get('id')), 'nome': nome, 'avisar': bool(b.get('avisar', True)),
+                           'lucro_min_rs': _numero(b.get('lucro_min_rs')),
+                           'lucro_min_pct': _numero(b.get('lucro_min_pct')),
+                           'criado_em': str(b.get('criado_em') or ''), 'atualizado_em': str(b.get('atualizado_em') or ''),
+                           'filtros': filtros if isinstance(filtros, dict) else {}})
+    grupos = []
+    for g in _dicts(dados.get('grupos')):
+        if nome := str(g.get('nome') or '').strip():
+            grupos.append({'id': _inteiro(g.get('id')), 'nome': nome, 'itens': _itens_do_grupo(g.get('itens')),
+                           'criado_em': str(g.get('criado_em') or ''), 'atualizado_em': str(g.get('atualizado_em') or '')})
+    _numerar(valores)
+    _numerar(buscas)
+    _numerar(grupos)
+    return {'configuracoes': cfg, 'valores': valores, 'buscas': buscas, 'grupos': grupos}
+
+
+def _itens_do_grupo(lista):
+    """Itens de um grupo: só os que têm item_id, sem repetir, na ordem em que foram escolhidos."""
+    itens, vistos = [], set()
+    for it in _dicts(lista):
+        if (item_id := _inteiro(it.get('item_id'))) and item_id not in vistos:
+            vistos.add(item_id)
+            itens.append({'item_id': item_id, 'nome': str(it.get('nome') or '')})
+    return itens
+
+
+def _hash(dados):
+    return hashlib.sha1(json.dumps(dados, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
+
+
+def _vazio(dados):
+    """Sem nada do usuário: nenhum valor, nenhuma busca, nenhum grupo e as configurações padrão."""
+    return (not dados['valores'] and not dados['buscas'] and not dados['grupos']
+            and dados['configuracoes'] == {k: PADROES[k] for k in COMPARTILHADAS})
+
+
+def _formatar(dados):
+    """Texto do meus-dados.json, com uma linha por valor, busca e grupo, para o git mostrar e juntar as mudanças."""
+    def lista(linhas):
+        return '[\n' + ',\n'.join('    ' + json.dumps(l, ensure_ascii=False) for l in linhas) + '\n  ]' if linhas else '[]'
+    cfg = ',\n'.join(f'    {json.dumps(k)}: {json.dumps(v)}' for k, v in dados['configuracoes'].items())
+    return (f'{{\n  "formato": {FORMATO_DADOS},\n  "configuracoes": {{\n{cfg}\n  }},\n'
+            f'  "valores": {lista(dados["valores"])},\n  "buscas": {lista(dados["buscas"])},\n'
+            f'  "grupos": {lista(dados["grupos"])}\n}}\n')
+
+
 class Banco:
-    def __init__(self, caminho):
+    def __init__(self, caminho, arquivo_dados=None):
+        """arquivo_dados: o meus-dados.json compartilhado entre os PCs (None = só o banco, como nos testes)."""
         self.caminho = str(caminho)
+        self.arquivo_dados = Path(arquivo_dados) if arquivo_dados else None
+        self.erro_dados = None      # aparece na faixa do topo quando o arquivo não pode ser lido
+        self._assinatura = None     # (mtime, tamanho) do arquivo na última leitura ou gravação
+        self._trava_dados = threading.RLock()
         self._local = threading.local()
         self._escrita = threading.Lock()  # o SQLite aceita um escritor por vez
         with self._escrita:
             self.con.executescript(ESQUEMA)
+        self.sincronizar()
 
     @property
     def con(self):
@@ -188,27 +346,10 @@ class Banco:
         return cfg
 
     def salvar_config(self, mudancas):
-        limpo = {}
-        for chave, v in (mudancas or {}).items():
-            padrao = PADROES.get(chave)
-            if padrao is None:
-                continue
-            if isinstance(padrao, bool):
-                v = bool(v)
-            elif isinstance(padrao, (int, float)):
-                v = _numero(v)
-                if v is None:
-                    continue
-                lo, hi = LIMITES.get(chave, (float('-inf'), float('inf')))
-                v = min(max(v, lo), hi)
-                v = int(round(v)) if isinstance(padrao, int) else round(v, 2)
-            else:
-                v = str(v or '').strip()
-            limpo[chave] = v
-        with self._transacao() as con:
-            con.executemany('INSERT INTO config(chave, valor) VALUES (?, ?) '
-                            'ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor',
-                            [(k, json.dumps(v)) for k, v in limpo.items()])
+        limpo = _limpar_config(mudancas)
+        compartilhada = any(k not in SO_NESTE_PC for k in limpo)
+        with self._mudando_dados() if compartilhada else nullcontext(), self._transacao() as con:
+            con.executemany(_GRAVAR_CONFIG, [(k, json.dumps(v)) for k, v in limpo.items()])
         return self.config()
 
     def meta(self, chave, padrao=None):
@@ -217,8 +358,146 @@ class Banco:
 
     def salvar_meta(self, chave, v):
         with self._transacao() as con:
-            con.execute('INSERT INTO config(chave, valor) VALUES (?, ?) '
-                        'ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor', ('_' + chave, json.dumps(v)))
+            con.execute(_GRAVAR_CONFIG, ('_' + chave, json.dumps(v)))
+
+    # -------------------------------------------------------------- meus-dados.json (compartilhado entre os PCs)
+
+    def sincronizar(self):
+        """Acerta o banco com o meus-dados.json. Devolve True se trouxe mudanças do arquivo.
+
+        O arquivo guarda a tabela de valores, as buscas e as configurações (menos as de SO_NESTE_PC) e
+        vai pelo git para os outros PCs. O programa grava nele a cada mudança, e o que muda nele por fora
+        (git pull, edição) vem para o banco. Se os dois mudaram, vale o arquivo, e o que o banco tinha
+        fica em meus-dados.anterior.json. É o caso de um PC que já tinha dados na primeira vez com o arquivo.
+        """
+        if self.arquivo_dados is None:
+            return False
+        with self._trava_dados:
+            try:
+                return self._sincronizar()
+            except OSError as e:
+                self._assinatura = None  # tenta de novo na próxima vez
+                log.warning('Não consegui sincronizar o %s: %s', self.arquivo_dados.name, e)
+                return False
+
+    def _sincronizar(self):
+        assinatura = self._assinatura_do_arquivo()
+        if assinatura is not None and assinatura == self._assinatura:
+            return False  # o arquivo não mudou desde a última leitura ou gravação
+        if assinatura is None:  # sem arquivo: grava o que está no banco (primeira vez, ou ele foi apagado)
+            self.erro_dados = None
+            self._exportar()
+            return False
+        texto = self.arquivo_dados.read_text(encoding='utf-8-sig')
+        try:
+            arquivo = _normalizar(json.loads(texto))
+        except ValueError as e:
+            self._assinatura = assinatura  # só tenta de novo quando o arquivo mudar
+            problema = 'um conflito do git' if '<<<<<<<' in texto else f'um erro ({e})'
+            self.erro_dados = (f'O {self.arquivo_dados.name} está com {problema}. Resolva, ou apague o arquivo para '
+                               'gravar de novo os dados deste PC. Até lá, mudanças na tabela de valores, nas buscas '
+                               'e nas configurações não são salvas.')
+            log.warning(self.erro_dados)
+            return False
+        self.erro_dados = None
+        self._assinatura = assinatura
+        banco = self._dados_do_banco()
+        h_arquivo, h_banco, h_sincronizado = _hash(arquivo), _hash(banco), self.meta('dados_hash')
+        if h_arquivo == h_banco:
+            if h_sincronizado != h_arquivo:
+                self.salvar_meta('dados_hash', h_arquivo)
+            return False
+        if h_arquivo == h_sincronizado:  # só o banco mudou: a última gravação do arquivo tinha falhado
+            self._exportar(banco)
+            return False
+        if h_banco != h_sincronizado and not _vazio(banco):
+            anterior = self.arquivo_dados.with_suffix('.anterior.json')
+            anterior.write_text(_formatar(banco), encoding='utf-8')
+            log.warning('Os dados deste PC eram diferentes dos do %s e foram trocados por eles. Os anteriores '
+                        'ficaram em %s', self.arquivo_dados.name, anterior.name)
+        self._importar(arquivo)
+        log.info('Tabela de valores, buscas e configurações trazidas do %s', self.arquivo_dados.name)
+        return True
+
+    def _assinatura_do_arquivo(self):
+        try:
+            st = self.arquivo_dados.stat()
+        except FileNotFoundError:
+            return None
+        return st.st_mtime_ns, st.st_size
+
+    def _dados_do_banco(self):
+        cfg = self.config()
+        return _normalizar({
+            'configuracoes': {k: cfg[k] for k in COMPARTILHADAS},
+            'valores': [dict(r) for r in self.con.execute(
+                'SELECT id, item_id, nome, refino_min, valor_kk, criado_em, atualizado_em FROM valores')],
+            'buscas': [{**dict(r), 'filtros': json.loads(r['filtros'])} for r in self.con.execute(
+                'SELECT id, nome, avisar, lucro_min_rs, lucro_min_pct, criado_em, atualizado_em, filtros FROM buscas')],
+            'grupos': self.grupos(),
+        })
+
+    def _importar(self, dados):
+        with self._transacao() as con:
+            antes = {r['id']: r['criado_em'] for r in con.execute('SELECT id, criado_em FROM buscas')}
+            con.execute('DELETE FROM valores')
+            con.executemany(
+                'INSERT INTO valores (id, item_id, nome, nome_norm, refino_min, valor_kk, criado_em, atualizado_em) '
+                'VALUES (?,?,?,?,?,?,?,?)',
+                [(v['id'], v['item_id'], v['nome'], norm(v['nome']), v['refino_min'], v['valor_kk'], v['criado_em'],
+                  v['atualizado_em']) for v in dados['valores']])
+            con.execute('DELETE FROM buscas')
+            con.executemany(
+                'INSERT INTO buscas (id, nome, filtros, avisar, lucro_min_rs, lucro_min_pct, criado_em, atualizado_em) '
+                'VALUES (?,?,?,?,?,?,?,?)',
+                [(b['id'], b['nome'], json.dumps(b['filtros'], ensure_ascii=False), int(b['avisar']),
+                  b['lucro_min_rs'], b['lucro_min_pct'], b['criado_em'], b['atualizado_em']) for b in dados['buscas']])
+            # o histórico de avisos é de cada PC; sai o das buscas que não existem mais ou viraram outra
+            con.execute('DELETE FROM grupos')
+            con.executemany('INSERT INTO grupos (id, nome, itens, criado_em, atualizado_em) VALUES (?,?,?,?,?)',
+                            [(g['id'], g['nome'], json.dumps(g['itens'], ensure_ascii=False), g['criado_em'],
+                              g['atualizado_em']) for g in dados['grupos']])
+            depois = {b['id']: b['criado_em'] for b in dados['buscas']}
+            con.executemany('DELETE FROM avisos WHERE busca_id = ?',
+                            [(bid,) for bid, criada in antes.items() if depois.get(bid) != criada])
+            con.executemany(_GRAVAR_CONFIG, [(k, json.dumps(v)) for k, v in dados['configuracoes'].items()]
+                            + [('_dados_hash', json.dumps(_hash(dados)))])
+        self.recalcular()
+
+    def _exportar(self, dados=None):
+        """Grava o arquivo, sem passar por cima dele se estiver com erro ou tiver mudado sem ser lido."""
+        atual = self._assinatura_do_arquivo()
+        if self.erro_dados or (atual is not None and atual != self._assinatura):
+            return  # o próximo sincronizar() resolve
+        dados = self._dados_do_banco() if dados is None else dados
+        texto = _formatar(dados)
+        try:
+            if atual is None or self.arquivo_dados.read_text(encoding='utf-8-sig') != texto:
+                temporario = self.arquivo_dados.with_name(self.arquivo_dados.name + '.tmp')
+                temporario.write_text(texto, encoding='utf-8')
+                os.replace(temporario, self.arquivo_dados)
+        except OSError as e:
+            log.warning('Não consegui gravar o %s: %s', self.arquivo_dados.name, e)
+            self._assinatura = None  # tenta de novo no próximo sincronizar()
+            return
+        self._assinatura = self._assinatura_do_arquivo()
+        self.salvar_meta('dados_hash', _hash(dados))
+
+    @contextmanager
+    def _mudando_dados(self):
+        """Mudança na tabela de valores, nas buscas ou numa configuração compartilhada.
+
+        Antes, traz o que mudou no arquivo (para não gravar por cima); depois, grava o arquivo.
+        """
+        if self.arquivo_dados is None:
+            yield
+            return
+        with self._trava_dados:
+            self.sincronizar()
+            if self.erro_dados:
+                raise ValueError(self.erro_dados)
+            yield
+            self._exportar()
 
     # -------------------------------------------------------------- anúncios
 
@@ -302,14 +581,19 @@ class Banco:
             con.executemany('INSERT OR IGNORE INTO conhecidos (item_id, nome, nome_norm, tipo, efeito) '
                             'VALUES (?,?,?,?,?)', conhecidos.values())
             pendentes = {r['nome_norm'] for r in con.execute('SELECT nome_norm FROM valores WHERE item_id IS NULL')}
+            vinculou = False
             for item_id, _, nome_norm, _, _ in conhecidos.values():
                 if nome_norm in pendentes:  # valor cadastrado só pelo nome ganha o item_id
                     con.execute('UPDATE valores SET item_id = ? WHERE item_id IS NULL AND nome_norm = ?',
                                 (item_id, nome_norm))
                     pendentes.discard(nome_norm)
+                    vinculou = True
             con.execute('UPDATE anuncios SET itens_lidos_em = ?, preco_lido = ? WHERE id = ?',
                         (quando, preco, anuncio_id))
         self.recalcular([anuncio_id])
+        if vinculou and self.arquivo_dados is not None:
+            with self._trava_dados:
+                self._exportar()  # o item_id também vai para o meus-dados.json
 
     def gravar_catalogo(self, itens):
         with self._transacao() as con:
@@ -324,10 +608,14 @@ class Banco:
         return {r[0] for r in self.con.execute('SELECT item_id FROM conhecidos WHERE no_catalogo = 1')}
 
     def ids_valorizados(self):
-        """item_ids da tabela de valores e das condições de item das buscas salvas."""
+        """item_ids da tabela de valores e das condições das buscas salvas ("Tem item" e "Tem pelo menos um",
+        inclusive os itens dos grupos)."""
         ids = {r[0] for r in self.con.execute('SELECT DISTINCT item_id FROM valores WHERE item_id IS NOT NULL')}
         for b in self.buscas():
-            ids.update(int(c['item_id']) for c in b['filtros'].get('itens') or () if str(c.get('item_id') or '').isdigit())
+            for c in self._resolver_grupos(_condicoes(b['filtros'].get('itens')) + _condicoes(b['filtros'].get('algum'))):
+                ids.update(c.get('itens') or ())
+                if c['item_id'] is not None:
+                    ids.add(c['item_id'])
         return ids
 
     def sugestoes(self, texto, limite=12):
@@ -486,20 +774,22 @@ class Banco:
             p['h24'] = _ha_24h()
         base = list(conds)
 
-        condicoes = [_condicao(c) for c in (f.get('itens') or []) if c and (c.get('item_id') or norm(c.get('nome')))]
+        # "Tem item" (itens): a conta precisa atender a todas as condições
+        condicoes = self._resolver_grupos(_condicoes(f.get('itens')))
         filtros_item = []
         for n, cond in enumerate(condicoes):
-            filtro = self._filtro_item(cond, n, p)
+            filtro, sub = self._contas_com_item(cond, f'i{n}', p)
             filtros_item.append(filtro)
-            p[f'i{n}_qtd'] = cond['qtd_min']
-            sub = f'SELECT i.anuncio_id FROM itens i WHERE {filtro} GROUP BY i.anuncio_id HAVING SUM(i.qtd) >= :i{n}_qtd'
-            site = ids_do_site(cond) if ids_do_site else None
-            if site is None:
-                conds.append(f'(a.itens_lidos_em IS NOT NULL AND a.id IN ({sub}))')
-            else:
-                lista = ','.join(str(int(i)) for i in site) or 'NULL'
-                conds.append(f'((a.itens_lidos_em IS NOT NULL AND a.id IN ({sub})) '
-                             f'OR (a.itens_lidos_em IS NULL AND a.id IN ({lista})))')
+            conds.append(_lidas_ou_do_site(sub, ids_do_site(cond) if ids_do_site else None))
+        # "Tem pelo menos um" (algum): basta atender a uma, como a arma de um rank, que tem um nome em cada classe
+        algum = self._resolver_grupos(_condicoes(f.get('algum')))
+        if algum:
+            subs, site = [], None
+            for n, cond in enumerate(algum):
+                subs.append(self._contas_com_item(cond, f'a{n}', p)[1])
+                if (ids := ids_do_site(cond) if ids_do_site else None) is not None:
+                    site = (site or set()) | set(ids)
+            conds.append(_lidas_ou_do_site(' UNION '.join(subs), site))
         lucro_sql = 'CASE WHEN a.valor_kk > 0 THEN a.valor_kk / :kk_bi * :bi - a.preco * :tcc END'
         if f.get('so_lucro'):
             conds.append(f'({lucro_sql}) > 0')
@@ -515,7 +805,7 @@ class Banco:
         contas = []
         for r in linhas:
             conta = self._publico(r, cfg)
-            conta['a_confirmar'] = bool(condicoes) and not conta['lida']
+            conta['a_confirmar'] = bool(condicoes or algum) and not conta['lida']
             # unidades de cada item pesquisado (na ordem das condições); None = itens ainda não lidos
             conta['qtd_busca'] = qtds.get(r['id'], [0] * len(condicoes)) if condicoes and conta['lida'] else None
             contas.append(conta)
@@ -523,7 +813,7 @@ class Banco:
             _ordenar_por_itens(contas, ordem)
         precos = [c['preco'] for c in contas]
         nao_lidas = 0
-        if condicoes or f.get('so_lucro'):
+        if condicoes or algum or f.get('so_lucro'):
             fora = self.con.execute(f'SELECT COUNT(*) FROM anuncios a WHERE {" AND ".join(base)} '
                                     'AND a.itens_lidos_em IS NULL', p).fetchone()[0]
             nao_lidas = fora - sum(c['a_confirmar'] for c in contas)
@@ -531,24 +821,36 @@ class Banco:
                 'preco_min': min(precos) if precos else None,
                 'preco_mediana': statistics.median(precos) if precos else None,
                 'a_confirmar': sum(c['a_confirmar'] for c in contas), 'nao_lidas': max(0, nao_lidas),
-                'busca_itens': condicoes}
+                'busca_itens': condicoes, 'busca_algum': algum}
 
     @staticmethod
-    def _filtro_item(cond, n, p):
-        """Itens (tabela i) que atendem à condição n: qual item, refino mínimo e onde ele está.
+    def _filtro_item(cond, chave, p):
+        """Itens (tabela i) que atendem à condição: qual item, refino mínimo e onde ele está.
 
-        Sem item_id (item digitado, ainda não visto), vale qualquer item com esse texto no nome.
+        De um grupo, vale qualquer item dele (itens, que _resolver_grupos preenche). Sem item_id (item
+        digitado, ainda não visto), vale qualquer item com esse texto no nome.
+        chave distingue os parâmetros de cada condição na consulta.
         """
-        if cond['item_id'] is not None:
-            alvo = f'i.item_id = :i{n}_id'
-            p[f'i{n}_id'] = cond['item_id']
+        if cond['grupo_id'] is not None:
+            ids = ','.join(str(int(i)) for i in cond.get('itens') or ())
+            alvo = f'i.item_id IN ({ids})' if ids else '0'
+        elif cond['item_id'] is not None:
+            alvo = f'i.item_id = :{chave}_id'
+            p[f'{chave}_id'] = cond['item_id']
         else:
-            alvo = f'i.nome_norm LIKE :i{n}_nome'
-            p[f'i{n}_nome'] = f'%{norm(cond["nome"])}%'
+            alvo = f'i.nome_norm LIKE :{chave}_nome'
+            p[f'{chave}_nome'] = f'%{norm(cond["nome"])}%'
         secoes = ONDE.get(cond['onde'])
         onde = (f'i.secao IN ({",".join(repr(s) for s in secoes)})' if secoes else f'i.secao NOT IN ({_FORA})')
-        p[f'i{n}_ref'] = cond['refino_min']
-        return f'{alvo} AND i.refino >= :i{n}_ref AND {onde}'
+        p[f'{chave}_ref'] = cond['refino_min']
+        return f'{alvo} AND i.refino >= :{chave}_ref AND {onde}'
+
+    def _contas_com_item(self, cond, chave, p):
+        """(filtro dos itens, subconsulta das contas) de uma condição: todas as pilhas somadas atingem a quantidade."""
+        filtro = self._filtro_item(cond, chave, p)
+        p[f'{chave}_qtd'] = cond['qtd_min']
+        return filtro, (f'SELECT i.anuncio_id FROM itens i WHERE {filtro} '
+                        f'GROUP BY i.anuncio_id HAVING SUM(i.qtd) >= :{chave}_qtd')
 
     def _quantidades(self, filtros_item, p):
         """{conta: [unidades de cada item pesquisado]}, somando todas as pilhas que atendem a cada condição."""
@@ -598,7 +900,7 @@ class Banco:
                                  (nome_norm,)).fetchone()
             item_id = r['item_id'] if r else None
         quando = agora()
-        with self._transacao() as con:
+        with self._mudando_dados(), self._transacao() as con:
             if item_id is not None:
                 dup = con.execute('SELECT id FROM valores WHERE item_id = ? AND refino_min = ? AND id IS NOT ?',
                                   (item_id, refino_min, valor_id)).fetchone()
@@ -621,7 +923,7 @@ class Banco:
         return valor_id
 
     def apagar_valor(self, valor_id):
-        with self._transacao() as con:
+        with self._mudando_dados(), self._transacao() as con:
             con.execute('DELETE FROM valores WHERE id = ?', (valor_id,))
         self.recalcular()
 
@@ -637,6 +939,47 @@ class Banco:
             {'kk_bi': float(valor.KK_POR_BI), 'bi': cfg['rs_por_bi'], 'tcc': cfg['rs_por_tcc']}).fetchone()
         return {'valores': r['n'], 'itens': r['itens'], 'contas_com_item': com_item, 'ativas': ativas,
                 'melhor': self._publico(melhor, cfg) if melhor else None}
+
+    # -------------------------------------------------------------- grupos de itens
+
+    def grupos(self):
+        """Grupos de itens (ex.: as armas de um rank, que têm um nome em cada classe), para usar nas buscas."""
+        return [{**dict(r), 'itens': json.loads(r['itens'])}
+                for r in self.con.execute('SELECT id, nome, itens, criado_em, atualizado_em FROM grupos ORDER BY nome, id')]
+
+    def salvar_grupo(self, dados, grupo_id=None):
+        nome = str(dados.get('nome') or '').strip()
+        if not nome:
+            raise ValueError('Dê um nome para o grupo.')
+        itens = json.dumps(_itens_do_grupo(dados.get('itens')), ensure_ascii=False)
+        quando = agora()
+        with self._mudando_dados(), self._transacao() as con:
+            if con.execute('SELECT 1 FROM grupos WHERE nome = ? AND id IS NOT ?', (nome, grupo_id)).fetchone():
+                raise ValueError('Já existe um grupo com esse nome.')
+            if grupo_id:
+                if con.execute('UPDATE grupos SET nome=?, itens=?, atualizado_em=? WHERE id=?',
+                               (nome, itens, quando, grupo_id)).rowcount == 0:
+                    raise KeyError(grupo_id)
+            else:
+                grupo_id = con.execute('INSERT INTO grupos (nome, itens, criado_em, atualizado_em) VALUES (?,?,?,?)',
+                                       (nome, itens, quando, quando)).lastrowid
+        return grupo_id
+
+    def apagar_grupo(self, grupo_id):
+        """As buscas que usam o grupo continuam salvas, mas a condição dele não acha mais nenhuma conta."""
+        with self._mudando_dados(), self._transacao() as con:
+            con.execute('DELETE FROM grupos WHERE id = ?', (grupo_id,))
+
+    def _resolver_grupos(self, condicoes):
+        """As condições de grupo ganham os item_ids do grupo (e o nome atual dele); grupo apagado não acha nada."""
+        if any(c['grupo_id'] is not None for c in condicoes):
+            grupos = {g['id']: g for g in self.grupos()}
+            for c in condicoes:
+                if c['grupo_id'] is not None:
+                    g = grupos.get(c['grupo_id'])
+                    c['itens'] = [it['item_id'] for it in g['itens']] if g else []
+                    c['nome'] = g['nome'] if g else c['nome']
+        return condicoes
 
     # -------------------------------------------------------------- buscas salvas e avisos
 
@@ -657,7 +1000,7 @@ class Banco:
             raise ValueError('Filtros inválidos.')
         campos = (nome, json.dumps(filtros, ensure_ascii=False), 1 if dados.get('avisar', True) else 0,
                   _numero(dados.get('lucro_min_rs')), _numero(dados.get('lucro_min_pct')), agora())
-        with self._transacao() as con:
+        with self._mudando_dados(), self._transacao() as con:
             if busca_id:
                 cur = con.execute('UPDATE buscas SET nome=?, filtros=?, avisar=?, lucro_min_rs=?, lucro_min_pct=?, '
                                   'atualizado_em=? WHERE id=?', (*campos, busca_id))
@@ -670,7 +1013,7 @@ class Banco:
         return busca_id
 
     def apagar_busca(self, busca_id):
-        with self._transacao() as con:
+        with self._mudando_dados(), self._transacao() as con:
             con.execute('DELETE FROM avisos WHERE busca_id = ?', (busca_id,))
             con.execute('DELETE FROM buscas WHERE id = ?', (busca_id,))
 

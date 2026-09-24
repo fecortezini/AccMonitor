@@ -287,7 +287,10 @@ class Coletor(threading.Thread):
             log.warning('Falha ao ler a conta %s: %s', rid, erro)
             if simultaneas > 1 and isinstance(erro, urllib.error.HTTPError) and erro.code in RECUSAS:
                 # o site pode estar limitando os acessos: volta a ler uma conta por vez
-                self.banco.salvar_config({'leituras_simultaneas': 1})
+                try:
+                    self.banco.salvar_config({'leituras_simultaneas': 1})
+                except ValueError as e:  # o meus-dados.json está com erro e não aceita mudanças agora
+                    log.warning('Não consegui mudar para uma conta por vez: %s', e)
                 log.warning('O site recusou uma leitura; voltando a ler uma conta por vez')
                 self._falha(f'O site recusou uma leitura (HTTP {erro.code}). Voltei a ler uma conta por vez.')
             else:
@@ -363,8 +366,12 @@ class Coletor(threading.Thread):
     def ids_do_site(self, cond):
         """ids de contas que a busca do site encontra para uma condição de item, ou None.
 
-        Só vale para equipamentos do catálogo. O refino só é filtrado no caso do Cosmos.
+        Só vale para equipamentos do catálogo. O refino só é filtrado no caso do Cosmos. Num grupo,
+        vale a conta que tem qualquer um dos equipamentos dele (o site junta vários itens com OU).
         """
+        if cond.get('grupo_id') is not None:
+            ids = sorted(set(cond.get('itens') or ()) & self._ids_catalogo())
+            return self._busca_site(('grupo', tuple(ids)), lambda: self.site.busca_site(ids)) if ids else None
         item_id = cond.get('item_id')
         if not str(item_id or '').isdigit() or int(item_id) not in self._ids_catalogo():
             return None

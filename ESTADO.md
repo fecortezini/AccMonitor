@@ -1,6 +1,6 @@
 # Estado do projeto
 
-*Atualizado em 21/09/2026.*
+*Atualizado em 23/09/2026.*
 
 ## O projeto
 
@@ -26,6 +26,28 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Janela própria:** o Edge abre em modo aplicativo, e fechar a janela encerra o programa.
 
 **Melhorias depois da primeira versão:**
+- **Grupos de itens (24/09):** juntam itens buscados juntos, como as armas de um rank.
+  - **Na busca:** o grupo vira uma condição só, que vale para qualquer item dele. Funciona no "Tem item" e no "Tem pelo menos um", e escolher item por item continua possível.
+  - **Criar e editar:** pelo link "grupos", no painel de filtros.
+  - **Outro PC:** os grupos vão no `meus-dados.json`.
+  - **Criados para você:** **Armas UP4** (21 armas com "Nível de Ataque +70") e **Armas UP3** (32 com "+40").
+    - **Como foram achadas:** pelos tooltips das armas lidas nas contas. Todas as armas ★★★ do catálogo do site aparecem em alguma conta, então as listas estão completas.
+    - **UP3:** tem os pares das UP4 (a mesma arma um nível abaixo, com o id anterior) e as outras armas de Rank 9 com +40 (Atirador Nebuloso e outras da série 3298x, Fúria da Lua Brilhante, Destruidor Solar, Perdão Divino, Elo de Destinos Celeste).
+- **Tem pelo menos um (24/09):** um filtro novo embaixo do "Tem item". A conta precisa ter pelo menos um dos itens, não todos. Serve, por exemplo, para a arma de um rank, que tem um nome em cada classe.
+  - **Campos:** os mesmos do "Tem item".
+  - **Onde aparece:** na aba Pesquisados dos detalhes, num grupo próprio que mostra qual dos itens a conta tem. Na lista não vira coluna nem entra no Por un.
+  - **Onde mais vale:** nas buscas salvas, nos avisos e na fila do coletor.
+- **Programa fechando sozinho (24/09):** a janela sumia de tempos em tempos.
+  - **O que o programa fazia:** fechava o Edge à força quando a página passava 10 min sem mandar o sinal de "estou aberta" (a cada 15 s), mesmo com a janela aberta. É a única saída automática do programa. Não houve falha do Edge, atualização nem suspensão do Windows nos horários dos fechamentos, e o coletor trabalhava normalmente até o último segundo.
+  - **Agora:** o programa segue aberto enquanto o Edge tiver a janela, mesmo minimizada ou atrás do jogo, olhando as janelas pela API do Windows. O sinal só vale no navegador padrão, quando o Edge não é encontrado.
+  - **Log:** o `mercado.log` registra o motivo de cada encerramento ("Encerrando porque …") e quando a página passa 10 min sem sinal com a janela aberta.
+  - **Ainda sem confirmar:** por que a página parava de mandar o sinal. Em teste, uma janela minimizada mandou o sinal normalmente por 13 min. A suspeita é o Edge parar páginas escondidas.
+- **Mesmos dados em todos os PCs (23/09):** a tabela de valores, as buscas e as ⚙ Configurações ficam no `meus-dados.json`, que vai pelo git. Assim, não é preciso configurar tudo de novo em outro PC.
+  - **Como funciona:** o programa grava no arquivo a cada mudança. Quando ele muda por fora (`git pull`), o programa percebe ao abrir, ou em até 3 s se já estiver aberto.
+  - **Fica em cada PC:** as contas lidas, o histórico de avisos, a largura dos painéis e o Telegram e o Discord (para os tokens não irem para o git).
+  - **Por que não o banco inteiro:** o `mercado.db` tem 112 MB, acima do limite de 100 MB do GitHub, e muda a cada consulta. Um PC novo lê as contas sozinho em ~1 h, começando pelas que têm itens da tabela.
+  - **O banco do PC NOT-LAB04 é o oficial:** o `meus-dados.json` foi gerado dele em 23/09, com 23 valores e 3 buscas. Num PC que já tinha dados, eles são trocados pelos do arquivo na primeira abertura, e os antigos ficam em `meus-dados.anterior.json`.
+  - **Conflito no git:** o programa não grava por cima do arquivo. Uma faixa no topo avisa até o conflito ser resolvido ou o arquivo apagado.
 - **Itens pesquisados (21/09):** com condições de item:
   - a lista mostra quantas unidades de cada item a conta tem (coluna Pesquisados);
   - dá para ordenar por mais itens, por um item específico ou por menor preço por unidade;
@@ -43,30 +65,32 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
   - **Medido no site real, com pausa de 1 s:** 2,2 s por conta lendo uma por vez e 1,3 s lendo duas.
   - **Se o site recusar:** com a opção em 2, uma resposta 403, 429 ou 503 faz ela voltar sozinha para 1, e aparece um aviso no topo.
   - **Risco de bloqueio (avaliado em 22/09):** o site não tem `robots.txt`, serviço anti-robô nem cabeçalhos de limite de acesso, e não recusou nenhuma das ~1.260 contas lidas até então. Com 2, são ~45 páginas por minuto: dá para notar nos registros do servidor, mas é bem menos do que as proteções automáticas costumam barrar.
-- **Lance mínimo (22/09):** embaixo do preço, na lista e nos detalhes, aparece pequeno o lance mínimo: 70% do preço pedido, fixo e arredondado para cima.
+- **Lance mínimo (22/09):** embaixo do preço, na lista e nos detalhes, aparece pequeno o lance mínimo: 70% do preço pedido, fixo e arredondado para cima. *Em 24/09:* o Por un. também ganhou embaixo o preço por unidade com o lance mínimo, e a aba Pesquisados dos detalhes também.
 - **Aviso por preço (21/09):** a janela "Salvar busca" tem "só avisar se o preço for de até … TCC" (aceita "5k"), além do lucro mínimo.
 - **Detalhes (21/09):** "De onde vem o valor" foi para o fim do painel, depois dos itens e dos botões.
 - **Lista alinhada (21/09):** o preço por unidade virou a coluna Por un., e a soma e cada item pesquisado ganharam colunas próprias. Os números de cada coluna têm as mesmas casas decimais, e cada título fica alinhado com os seus valores.
 - **Busca por parte do nome (21/09):** o "Tem item" aceita parte do nome, inclusive de itens ainda não vistos nas contas lidas. Exemplo: "pedra do dem" no começo da carga, quando só as contas baratas foram lidas. Outro exemplo: "relíquia maravilha", que soma as três relíquias.
 
 **Testes:**
-- **Automáticos:** 81, com páginas reais do site salvas. Todos passam.
+- **Automáticos:** 115, com páginas reais do site salvas. Todos passam.
 - **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Rodou sem erros na primeira versão. Depois das melhorias, as telas foram conferidas num Edge invisível com um script avulso, porque o PC onde foram feitas não tem Node. Esse script cobriu os passos do teste antigo e os novos, sem erros. Em 22/09 o teste rodou de novo, com Node, e passou sem erros.
 - **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
 - **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
 
-**Situação dos dados:** o `mercado.db` fica fora do git e foi apagado depois dos testes. Na primeira abertura o programa começa do zero.
+**Situação dos dados:** a tabela de valores, as buscas e as configurações estão no `meus-dados.json`, no git. O `mercado.db` fica fora do git: cada PC tem o seu, e num PC novo o programa começa a ler as contas do zero.
 
 ## O que falta
 
 **Conferir na prática** (nunca foi confirmado visualmente):
 1. **Notificação do Windows e bipes:** abra ⚙ Configurações → **Testar avisos**.
-2. **Carga inicial completa (~2 h):** nunca rodou até o fim. Vale ver como a busca, a lista e o tamanho do `mercado.db` se comportam com as ~1.500 contas lidas.
+2. **Carga inicial completa (~2 h):** já rodou até o fim no PC NOT-LAB04: em 23/09 eram 1.791 contas lidas e um `mercado.db` de 112 MB (605 mil itens). Falta ver se a busca e a lista continuam rápidas com tudo lido.
 3. **Aviso de verdade:** até agora só foi testado com anúncios simulados. Falta ver acontecer com uma conta nova real no site, depois de salvar uma busca com "me avisar".
 4. **Telegram e Discord:** nunca foram testados com um token ou webhook de verdade.
+5. **Dados em outro PC:** depois do `git pull`, abrir o programa no outro PC e ver a tabela, as buscas e as configurações chegarem.
+6. **Fechamento sozinho:** com a versão nova, ver se o programa ainda fecha sozinho. Se fechar, o `mercado.log` diz o motivo.
 
 **Seu trabalho no programa:**
-5. Cadastrar os valores reais na Tabela de valores (ex.: Cosmos +10 = 3 bi) e ajustar a cotação do bi e do TCC.
+7. Cadastrar os valores reais na Tabela de valores (ex.: Cosmos +10 = 3 bi) e ajustar a cotação do bi e do TCC.
 
 **Ideias para depois** (nada começado; conversar antes):
 - Usar o histórico de vendas do site (`/history`) para sugerir valores e preços típicos.
@@ -86,14 +110,14 @@ cd Classic187AccountMonitor
 - **Rodar os testes:**
   - automáticos: `py -m unittest discover -s tests -t .`
   - interface: `py -m mercado --sem-janela --porta 8765` e, em outro terminal, `node tests/interface/testar_interface.mjs`
-- **Dados:** cada PC tem o próprio `mercado.db`, com as contas lidas, a tabela de valores e as buscas. Para levar os dados de um PC para outro, copie esse arquivo com o programa fechado.
+- **Dados:** a tabela de valores, as buscas e as configurações chegam com o `git pull` (`meus-dados.json`). Depois de mudar algo, envie com `git add meus-dados.json`, `git commit` e `git push`. As contas o programa lê sozinho em cada PC (o `mercado.db`, fora do git).
 
 ## Mapa do código
 
 | Arquivo | Responsabilidade |
 |---|---|
 | `mercado/site.py` | Lê o HTML e o JSON do marketplace. |
-| `mercado/banco.py` | SQLite: gravação, busca com filtros, tabela de valores, buscas e avisos. |
+| `mercado/banco.py` | SQLite: gravação, busca com filtros, tabela de valores, buscas e avisos. Sincroniza o `meus-dados.json`. |
 | `mercado/valor.py` | Regras do cálculo de valor e lucro. |
 | `mercado/coletor.py` | Consultas periódicas, fila de leitura e disparo dos avisos. |
 | `mercado/avisos.py` | Canais de aviso. |

@@ -1,9 +1,11 @@
-# Dados locais do programa
+# Dados locais do programa (o meus-dados.json vai para o git: é o que os outros PCs recebem)
 mercado.db
 mercado.db-*
 mercado.log*
 .janela/
 .instancia.json
+meus-dados.json.tmp
+meus-dados.anterior.json
 
 # Helper antigo (linha de comando)
 estado.json

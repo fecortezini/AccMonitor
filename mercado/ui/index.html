@@ -81,6 +81,16 @@
         <button class="link" id="add-cond"><svg class="ic"><use href="#i-plus"/></svg>adicionar condição</button>
       </div>
       <div class="campo">
+        <div class="campo-topo"><label class="rotulo" title="A conta precisa ter pelo menos um destes itens, qualquer um. Por exemplo, a arma de um rank, que tem um nome em cada classe.">Tem pelo menos um</label>
+          <button class="link fino" id="abrir-grupos" title="Criar e editar grupos de itens, como as armas de um rank"><svg class="ic"><use href="#i-list"/></svg>grupos</button></div>
+        <div class="condicoes" id="f-algum"></div>
+        <div class="seletor-item" id="novo-algum" hidden>
+          <div class="entrada"><svg class="ic"><use href="#i-search"/></svg><input placeholder="Digite o nome do item…" autocomplete="off"></div>
+          <div class="sugestoes"></div>
+        </div>
+        <button class="link" id="add-algum"><svg class="ic"><use href="#i-plus"/></svg>adicionar item</button>
+      </div>
+      <div class="campo">
         <label>Mostrar</label>
         <div class="chips"><button class="chip" id="f-lucro">só com lucro</button><button class="chip" id="f-novas">só novas (24 h)</button></div>
       </div>
@@ -111,7 +121,7 @@
       <table class="tabela">
         <thead><tr>
           <th>Conta</th><th>Classe</th><th class="extra">Céu</th><th class="num" data-ordem="preco" title="Ordenar pelo menor preço">Preço</th>
-          <th class="num" id="col-por-un" data-ordem="preco_item" title="Preço dividido pela soma dos itens pesquisados (TCC por unidade). Clique para ver primeiro o menor." hidden>Por un.</th>
+          <th class="num" id="col-por-un" data-ordem="preco_item" title="Preço dividido pela soma dos itens pesquisados (TCC por unidade). Embaixo, o mesmo com o lance mínimo. Clique para ver primeiro o menor." hidden>Por un.</th>
           <th id="col-pesquisados" data-ordem="itens" title="Unidades de cada item pesquisado e, com mais de um, a soma. Clique para ver primeiro quem tem mais." hidden>Pesquisados</th>
           <th class="num extra" data-ordem="valor" title="Ordenar pelo maior valor estimado">Valor</th><th class="num" data-ordem="lucro_rs" title="Ordenar pelo maior lucro">Lucro</th><th>Destaques</th>
         </tr></thead>
@@ -198,11 +208,11 @@
         <div class="opcao"><div><b>Abrir o anúncio no navegador</b><small>Abre a página de compra assim que o aviso sai.</small></div>
           <button class="chave" data-campo="aviso_navegador" role="switch"></button></div>
         <details class="opcao-extra">
-          <summary><div><b>Telegram</b><small>Receber os avisos no celular.</small></div><span class="link">Configurar</span></summary>
+          <summary><div><b>Telegram</b><small>Receber os avisos no celular. Fica só neste PC.</small></div><span class="link">Configurar</span></summary>
           <div class="par"><input class="caixa" data-campo="telegram_token" placeholder="Token do bot (@BotFather)"><input class="caixa" data-campo="telegram_chat" placeholder="Seu chat id (@userinfobot)"></div>
         </details>
         <details class="opcao-extra">
-          <summary><div><b>Discord</b><small>Enviar para um canal seu.</small></div><span class="link">Configurar</span></summary>
+          <summary><div><b>Discord</b><small>Enviar para um canal seu. Fica só neste PC.</small></div><span class="link">Configurar</span></summary>
           <input class="caixa" data-campo="discord_webhook" placeholder="URL do webhook do canal">
         </details>
       </div>
@@ -232,6 +242,17 @@
       </div>
     </div>
     <div class="modal-rodape"><span class="espaco"></span><button class="btn fantasma" data-fechar>Cancelar</button><button class="btn primario" id="b-salvar">Salvar busca</button></div>
+  </div>
+</div>
+
+<div class="fundo-modal" id="modal-grupos" hidden>
+  <div class="modal" role="dialog" aria-labelledby="t-grupos">
+    <div class="modal-topo"><h3 id="t-grupos">Grupos de itens</h3><button class="icone-btn sem-borda" data-fechar><svg class="ic"><use href="#i-x"/></svg></button></div>
+    <div class="modal-corpo">
+      <p class="dim grupos-ajuda">Junte os itens que você busca juntos, como as armas de um rank, que têm um nome em cada classe. Na busca, escolha o grupo no “Tem item” ou no “Tem pelo menos um”: vale qualquer item dele.</p>
+      <div id="lista-grupos"></div>
+    </div>
+    <div class="modal-rodape"><button class="btn fantasma" id="novo-grupo"><svg class="ic"><use href="#i-plus"/></svg>Novo grupo</button><span class="espaco"></span><button class="btn primario" data-fechar>Fechar</button></div>
   </div>
 </div>
 

@@ -61,7 +61,8 @@ pw-market-helper/
     avisos.py           Windows, bipes, navegador, Telegram, Discord
     servidor.py         servidor local (127.0.0.1) com API JSON e os arquivos da interface
     ui/                 index.html, app.css, app.js (JS puro, sem bibliotecas externas)
-  mercado.db            criado na primeira execução
+  mercado.db            criado na primeira execução; é de cada PC
+  meus-dados.json       tabela de valores, buscas e configurações; vai pelo git para os outros PCs (seção 3.3)
   tests/                testes com páginas reais salvas
 ```
 
@@ -73,7 +74,7 @@ pw-market-helper/
 
 `msedge --app=http://127.0.0.1:{porta}/ --user-data-dir=<pasta>/.janela --no-first-run --window-size=1440,900`
 
-O perfil separado faz a janela ser independente do Edge do usuário. O programa encerra quando esse processo do Edge termina, ou seja, quando a janela é fechada. Se o Edge não for encontrado, abre o navegador padrão e encerra depois de 90 s sem sinal da página, que envia um sinal a cada 20 s.
+O perfil separado faz a janela ser independente do Edge do usuário. O programa segue aberto enquanto esse Edge tiver uma janela, mesmo minimizada ou atrás de outra, e encerra quando ela é fechada. Se o Edge não for encontrado, abre o navegador padrão e encerra depois de 3 min sem o sinal que a página envia a cada 15 s (2 min se ela nunca abrir).
 
 Se o programa já estiver aberto, um segundo clique só abre outra janela para a instância que já está rodando.
 
@@ -90,6 +91,25 @@ Se o programa já estiver aberto, um segundo clique só abre outra janela para a
 | `config` | chave e valor (lista na seção 6) |
 
 Índices: `itens(anuncio_id)`, `itens(item_id)`, `anuncios(ativo, preco)`.
+
+### 3.3 Mais de um PC: `meus-dados.json` *(23/09)*
+
+O programa é usado em mais de um PC, e refazer a tabela de valores, as buscas e as configurações em cada um dava trabalho. O `mercado.db` inteiro não pode ir para o git: tem ~110 MB depois da primeira carga (o GitHub recusa arquivos acima de 100 MB) e muda a cada consulta. Por isso, os dados se dividem em dois:
+
+- **Seus dados** (`valores`, `buscas` e as configurações): ficam também no `meus-dados.json`, na pasta do programa e no git. É um arquivo de texto com uma linha por valor e por busca, para o git mostrar e juntar as mudanças.
+- **O resto é de cada PC:** anúncios, itens, tooltips, catálogo e o histórico de avisos. Num PC novo, o coletor lê as contas sozinho, começando pelas que têm itens da tabela (seção 4).
+
+**Ficam só em cada PC:** as larguras dos painéis (a tela pode ser outra) e o Telegram e o Discord, para os tokens não irem para o git.
+
+**Sincronização** (`Banco.sincronizar`):
+- Toda mudança nos seus dados grava o arquivo. Antes de gravar, o programa traz o que mudou nele, para não passar por cima de um `git pull`.
+- O arquivo é conferido ao abrir o programa e a cada consulta de estado da interface (3 s). Só a data e o tamanho são comparados, e o conteúdo só é lido quando eles mudam.
+- O banco guarda o hash do que foi sincronizado por último, e é ele que diz o que mudou:
+  - só o arquivo mudou (`git pull`): o arquivo vai para o banco, e as contas são recalculadas;
+  - só o banco mudou (a gravação tinha falhado): o banco vai para o arquivo;
+  - os dois mudaram, ou é a primeira vez de um PC que já tinha dados: vale o arquivo, e o que o banco tinha fica em `meus-dados.anterior.json`.
+- **Sem arquivo** (primeira vez, ou ele foi apagado): o arquivo é criado com os dados do banco.
+- **Arquivo com erro ou conflito do git:** nada é gravado por cima dele. A faixa do topo avisa, e as mudanças nos seus dados são recusadas até ele ser resolvido ou apagado.
 
 ## 4. Coletor: como os dados chegam
 
@@ -142,6 +162,7 @@ Tema escuro, fonte Segoe UI Variable, ícones reais do jogo, conforme os mockups
   - nível mínimo;
   - Céu;
   - condições de item: item escolhido por sugestões (ou por parte do nome, que vale também para itens ainda não vistos nas contas lidas), refino ≥, quantidade ≥ e onde (qualquer, equipado, mochila, banco, cartas, engastada);
+  - *Depois (24/09):* "Tem pelo menos um" (`algum` nos filtros), embaixo do "Tem item" (`itens`), com as mesmas condições. No "Tem item" a conta precisa atender a todas; aqui basta uma. Exemplo: a arma de um rank, que tem um nome em cada classe. Na aba Pesquisados dos detalhes, ele ganha um grupo próprio: os itens que a conta tem, com as seções e as unidades, e numa linha os que ela não tem. Não entra nas colunas de itens pesquisados da lista, no preço por unidade nem nas ordens por itens;
   - "só com lucro" e "só novas (24 h)";
   - ordenação: lucro R$, lucro %, preço, valor, nível ou mais novas. Com condições de item, também mais itens pesquisados (soma), mais de um item específico e menor preço por unidade.
 - **Lista:**
@@ -189,7 +210,7 @@ Tema escuro, fonte Segoe UI Variable, ícones reais do jogo, conforme os mockups
 | `telegram_token`, `telegram_chat` | vazio |
 | `discord_webhook` | vazio |
 
-As larguras dos painéis também ficam em `config`.
+As larguras dos painéis também ficam em `config`. Elas, o Telegram e o Discord são de cada PC. As outras configurações vão para o `meus-dados.json` (seção 3.3).
 
 ## 7. Avisos
 
@@ -209,6 +230,7 @@ As larguras dos painéis também ficam em `config`.
 - **Busca do site indisponível:** os filtros de equipamento usam só as contas já lidas, com o aviso "resultado parcial".
 - **Tooltips:** só texto e cor são guardados e exibidos. Nenhum HTML do site é injetado na interface.
 - **Porta ou banco ocupados:** mensagem clara e o programa não abre uma segunda cópia.
+- **`meus-dados.json` com erro ou conflito do git:** a faixa do topo avisa, o banco continua com os últimos dados e as mudanças na tabela, nas buscas e nas configurações são recusadas até o arquivo ser resolvido ou apagado (seção 3.3).
 
 ## 9. Decisões tomadas durante a implementação
 
@@ -220,13 +242,35 @@ As larguras dos painéis também ficam em `config`.
 - **Segurança da API:** o servidor escuta só em 127.0.0.1. Cada chamada exige o token da execução (cabeçalho X-Token) e um cabeçalho Host local.
 - **Tooltips:** guardados uma vez só, compactados, reduzidos a texto e cor.
 - **Limpeza:** os itens de anúncios fora do ar há mais de 7 dias são apagados ao abrir o programa.
-- **Janela:** o programa acompanha o processo do Edge que abriu. Se esse processo terminar logo na abertura (outra janela do mesmo perfil ficou com ela), passa a valer o sinal que a página envia a cada 15 s.
+- **Janela:** o programa acompanha o processo do Edge que abriu e segue aberto enquanto ele tiver uma janela visível (a do programa ou uma do "Abrir no site"), mesmo minimizada ou atrás do jogo. As janelas são vistas pela API do Windows (`EnumWindows`, via ctypes).
+  - **Edge aberto sem janela por 30 s:** o programa encerra e fecha o Edge.
+  - **Edge que sai logo na abertura:** outra janela do mesmo perfil ficou com ela, e a janela passa a ser achada pelo título da página.
+  - **Navegador padrão:** só nele vale o sinal que a página envia a cada 15 s.
+  - **Contagem:** os tempos são contados em voltas de 1 s, e não pelo relógio, para uma suspensão do Windows não contar.
+  - **Log:** registra o motivo de cada encerramento e quando a página passa 10 min sem sinal com a janela aberta.
+  - *Depois (24/09):* antes, o programa fechava o Edge quando a página passava 10 min sem sinal, mesmo com a janela aberta. O programa fechava sozinho de tempos em tempos.
 - **Atualização da interface:** ela consulta o estado a cada 3 s, mas só redesenha a lista se algo visível mudou e só recarrega os detalhes se a conta aberta mudou. O formulário de cadastro nunca é redesenhado enquanto você digita.
+- **Grupos de itens (24/09):**
+  - ficam na tabela `grupos` (nome e itens em JSON, com `item_id` e nome) e no `meus-dados.json`;
+  - na busca, uma condição `grupo_id` vale para qualquer item do grupo: `item_id IN (…)`, com o refino, a quantidade (somada entre os itens) e o "onde" da condição;
+  - `_resolver_grupos` põe os itens e o nome de agora na condição; um grupo apagado não acha nada;
+  - a busca do site junta os equipamentos do catálogo que estão no grupo numa consulta só (o site trata vários itens com OU);
+  - na interface, os grupos aparecem primeiro nas sugestões de "Tem item" e "Tem pelo menos um";
+  - os grupos Armas UP4 e UP3 saíram da linha "Nível de Ataque +70" ou "+40" nos tooltips das armas.
+- **"Tem pelo menos um" no banco (24/09):**
+  - cada condição vira uma subconsulta, e elas se juntam com `UNION`;
+  - das contas ainda não lidas, entram como "a confirmar" as que a busca do site aponta para pelo menos um dos equipamentos;
+  - os itens também contam nas buscas salvas para a fila do coletor (`ids_valorizados`).
 - **Ordens pelos itens pesquisados:** as contas ainda não lidas ("a confirmar") vão para o fim, porque não se sabe quanto têm. "Mais …" (um item) segue o item quando outra condição é removida. Sem condições de item, essas ordens somem e volta a ordem padrão. Ao adicionar o primeiro item, a ordem passa para "Mais itens pesquisados".
 - **Ordenar pela coluna:** os títulos Preço, Por un., Pesquisados, Valor e Lucro ordenam a lista, e o "Ordenar por" acompanha. O "Ordenar por" fica no fim do painel de filtros e some da tela quando há várias condições de item.
-- **Lance mínimo:** o site aceita lances a partir de 70% do preço pedido. O valor é fixo no programa (`LANCE_MINIMO_PCT` no app.js), arredondado para cima (45 → 32), igual ao que o site mostra (2.400 → 1.680, 15.000 → 10.500).
+- **Lance mínimo:** o site aceita lances a partir de 70% do preço pedido. O valor é fixo no programa (`LANCE_MINIMO_PCT` no app.js), arredondado para cima (45 → 32), igual ao que o site mostra (2.400 → 1.680, 15.000 → 10.500). *Depois (24/09):* o Por un. mostra embaixo o preço por unidade com o lance mínimo (lance mínimo ÷ soma dos itens pesquisados), com as mesmas casas decimais da coluna. A aba Pesquisados dos detalhes mostra o mesmo.
 - **Colunas de número alinhadas:** cada número da lista tem a sua coluna, com o título alinhado do mesmo lado (à direita), e as mesmas casas decimais em todas as linhas. Por unidade: 3 algarismos no menor valor. R$: centavos só se todos os valores forem menores que R$ 100. Nos pesquisados, a soma e cada item são colunas separadas, com o número colado no ícone. Com a lista estreita, as marcas NOVA e A CONFIRMAR descem para baixo do nome.
 - **Item digitado pelo nome:** a condição vale para qualquer item com o texto no nome, sem diferenciar maiúsculas e acentos. Na Tabela de valores, o nome continua exato, porque o valor é de um item só.
+- **Mais de um PC (23/09):** os seus dados vão pelo git no `meus-dados.json`, e as contas continuam em cada PC (seção 3.3). Foram descartados:
+  - o `mercado.db` no git, pelo tamanho;
+  - o banco inteiro numa pasta do OneDrive: o SQLite não aguenta ser sincronizado com o programa aberto, e só um PC poderia abrir por vez;
+  - um banco na internet, que exigiria instalar pacotes e deixaria as buscas lentas.
+- **Ids ao juntar mudanças de dois PCs:** depois de um merge do git, valores ou buscas com o mesmo id ganham um id novo, e nenhum se perde. O histórico de avisos de uma busca apagada, ou que virou outra (data de criação diferente), sai junto.
 
 ## 10. Testes
 
@@ -236,6 +280,7 @@ As larguras dos painéis também ficam em `config`.
   - cálculo do valor (faixas, quantidades, pedras, conversões);
   - filtros no SQLite;
   - avisos (novo, baixa de preço, preço máximo, lucro mínimo, sem repetição);
-  - ordem da fila.
+  - ordem da fila;
+  - `meus-dados.json`: primeira vez, outro PC vazio ou com dados, `git pull` com o programa aberto, conflito do git, ids repetidos e o que fica só em cada PC.
 - **Teste completo** com uma lista simulada contendo uma conta nova, conferindo aviso, histórico e interface.
 - **Conferência manual da janela:** abrir, filtrar, ver detalhes, cadastrar valor, salvar busca e alterar configurações.

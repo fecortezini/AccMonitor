@@ -48,6 +48,10 @@ class App:
             ('POST', r'/api/buscas', self.criar_busca),
             ('PUT', r'/api/buscas/(\d+)', self.editar_busca),
             ('DELETE', r'/api/buscas/(\d+)', self.apagar_busca),
+            ('GET', r'/api/grupos', self.grupos),
+            ('POST', r'/api/grupos', self.criar_grupo),
+            ('PUT', r'/api/grupos/(\d+)', self.editar_grupo),
+            ('DELETE', r'/api/grupos/(\d+)', self.apagar_grupo),
             ('GET', r'/api/avisos', self.avisos),
             ('GET', r'/api/config', self.config),
             ('PUT', r'/api/config', self.salvar_config),
@@ -60,8 +64,11 @@ class App:
     # -------------------------------------------------------------- rotas
 
     def estado_api(self, q, corpo):
+        if self.banco.sincronizar():  # o meus-dados.json mudou por fora (git pull, edição)
+            self.estado.mudou()
+            self.coletor.repriorizar()
         cfg = self.banco.config()
-        return {**self.estado.como_dict(), **self.banco.contagem(),
+        return {**self.estado.como_dict(), **self.banco.contagem(), 'erro': self.banco.erro_dados or self.estado.erro,
                 'agora': datetime.now().isoformat(timespec='seconds'),
                 'rs_por_bi': cfg['rs_por_bi'], 'rs_por_tcc': cfg['rs_por_tcc'], 'intervalo_s': cfg['intervalo_s']}
 
@@ -120,6 +127,29 @@ class App:
     def apagar_busca(self, q, corpo, bid):
         self.banco.apagar_busca(int(bid))
         return {}
+
+    def grupos(self, q, corpo):
+        return {'grupos': self.banco.grupos()}
+
+    def criar_grupo(self, q, corpo):
+        gid = self.banco.salvar_grupo(corpo or {})
+        self._grupo_mudou()
+        return {'id': gid}
+
+    def editar_grupo(self, q, corpo, gid):
+        self.banco.salvar_grupo(corpo or {}, int(gid))
+        self._grupo_mudou()
+        return {'id': int(gid)}
+
+    def apagar_grupo(self, q, corpo, gid):
+        self.banco.apagar_grupo(int(gid))
+        self._grupo_mudou()
+        return {}
+
+    def _grupo_mudou(self):
+        """As buscas que usam o grupo mudam: a lista recarrega, e as contas com os itens dele sobem na fila."""
+        self.estado.mudou()
+        self.coletor.repriorizar()
 
     def avisos(self, q, corpo):
         return {'avisos': self.banco.avisos()}
