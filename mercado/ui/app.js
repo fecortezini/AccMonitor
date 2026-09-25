@@ -79,13 +79,13 @@ async function api(metodo, caminho, corpo) {
 }
 
 let avisoTimer;
-function avisar(msg, ruim = false) {
+function avisar(msg, ruim = false, ms = null) {
   const el = $('#aviso-rapido');
   el.textContent = msg;
   el.classList.toggle('ruim', ruim);
   el.hidden = false;
   clearTimeout(avisoTimer);
-  avisoTimer = setTimeout(() => { el.hidden = true; }, ruim ? 6000 : 3000);
+  avisoTimer = setTimeout(() => { el.hidden = true; }, ms ?? (ruim ? 6000 : 3000));
 }
 window.addEventListener('error', e => avisar(`Erro na interface: ${e.message}`, true));
 window.addEventListener('unhandledrejection', e => avisar(`Erro: ${e.reason?.message || e.reason}`, true));
@@ -158,6 +158,7 @@ function desenharTopo(e) {
     st.querySelector('span').textContent = 'Consultando o site…';
   }
   st.title = `A lista é consultada a cada ${e.intervalo_s} s`;
+  $('#sincronizar').classList.toggle('pendente', !!e.dados_a_enviar);
   const faixa = $('#faixa');
   faixa.hidden = !(e.erro && !e.sem_conexao_desde);
   if (!faixa.hidden) faixa.querySelector('span').textContent = e.erro;
@@ -554,10 +555,24 @@ function recarregarDetalhesSeMudou() {
   const a = S.conta?.anuncio;
   const c = S.resultado?.contas.find(x => x.id === S.sel);
   if (!a || !c) return;
-  const assinatura = x => [x.lida, x.preco, x.valor_kk, x.lucro_rs, x.ativo].join('|');
+  const assinatura = x => [x.lida, x.preco, x.valor_kk, x.lucro_rs, x.ativo, x.lances, x.maior_lance].join('|');
   if (assinatura(a) !== assinatura(c)) recarregarDetalhes();
 }
 const buscarEmBreve = debounce(buscar, 250);
+
+// Lances que a conta já recebeu, como o site mostra em "Fazer lance". As contas da busca na tela são
+// relidas a cada 1 min (mais espaçado se forem muitas); um lance novo fica destacado por 30 min.
+const LANCE_NOVO_MIN = 30;
+const lanceNovo = c => !!c.lance_novo_em && Date.now() - new Date(c.lance_novo_em).getTime() < LANCE_NOVO_MIN * 60000;
+function descricaoLance(c) {
+  return `${c.lances} ${c.lances === 1 ? 'lance pendente' : 'lances pendentes'}, o maior de ${inteiro(c.maior_lance)} TCC. `
+    + `Visto ${ha(c.lances_em)}${lanceNovo(c) ? `; lance novo ${ha(c.lance_novo_em)}` : ''}.`;
+}
+function lanceHtml(c) {
+  if (!c.lances) return '';
+  return `<span class="sub lance${lanceNovo(c) ? ' novo' : ''}" title="${descricaoLance(c)}">${lanceNovo(c) ? '▲ ' : ''}`
+    + `lance ${inteiro(c.maior_lance)}${c.lances > 1 ? ` · ${c.lances}` : ''}</span>`;
+}
 
 function lucroHtml(c, casas) {
   if (c.lucro_rs == null) return '<span class="dim">—</span>';
@@ -592,7 +607,7 @@ function desenharLista() {
       <td class="conta"><div><span class="nome">${esc(c.nome)}</span>${c.nova ? '<span class="selo nova">NOVA</span>' : ''}${c.a_confirmar ? '<span class="selo confirmar" title="A busca do site diz que tem o item; confirma quando a conta for lida">A CONFIRMAR</span>' : ''}</div>${!c.lida && !c.a_confirmar ? '<span class="sub">itens ainda não lidos</span>' : ''}</td>
       <td><img class="icone-classe" src="${CLASSE(c.ocupacao)}" alt="" ${SEM_IMG}>${esc(c.classe)} ${c.nivel}</td>
       <td class="extra">${esc(c.ceu)}</td>
-      <td class="num">${inteiro(c.preco)}<span class="sub" title="Lance mínimo: ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(c.preco))}</span></td>
+      <td class="num">${inteiro(c.preco)}<span class="sub" title="Lance mínimo: ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(c.preco))}</span>${lanceHtml(c)}</td>
       ${busca.length ? porUnidadeHtml(c, casas.un) + pesquisadosHtml(c, busca, destaque) : ''}
       <td class="num extra">${c.valor_rs != null ? reais(c.valor_rs, false, casas.valor) : '<span class="dim">—</span>'}</td>
       <td class="num lucro">${lucroHtml(c, casas.lucro)}</td>
@@ -721,7 +736,9 @@ function desenharDetalhes() {
       ${a.ativo ? '' : '<div class="aguardando"><b>Este anúncio saiu do ar</b><span>Provavelmente foi vendido ou removido.</span></div>'}
       <div class="dinheiro-grade">
         <div><span>Preço</span><b>${inteiro(a.preco)} TCC</b><small>= ${reais(a.preco_rs)}</small>
-          <small title="Lance mínimo: o site aceita lances a partir de ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(a.preco))}</small></div>
+          <small title="Lance mínimo: o site aceita lances a partir de ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(a.preco))}</small>
+          ${!a.lances_em ? '' : a.lances ? `<small class="lance${lanceNovo(a) ? ' novo' : ''}" title="${descricaoLance(a)}">${lanceNovo(a) ? '▲ ' : ''}${a.lances} ${a.lances === 1 ? 'lance' : 'lances'} · maior: ${inteiro(a.maior_lance)}</small>`
+            : `<small title="Visto ${ha(a.lances_em)}">nenhum lance</small>`}</div>
         <div><span>Valor estimado</span><b>${a.valor_rs != null ? reais(a.valor_rs) : '—'}</b><small>${a.valor_kk == null ? 'itens não lidos' : a.valor_kk === 0 ? 'nenhum item da tabela' : ouro(a.valor_kk)}</small></div>
         <div><span>Lucro</span><b class="${cor}">${reais(a.lucro_rs, true)}</b><small>${a.lucro_pct != null ? pct(a.lucro_pct) + ' do valor' : '&nbsp;'}</small></div>
       </div>
@@ -1501,6 +1518,29 @@ function valoresDaConfig() {
   });
   return cfg;
 }
+// ================================================================ sincronizar com o GitHub
+// Manda o que mudou aqui no meus-dados.json (tabela, buscas, grupos e configurações) e traz o que mudou no
+// outro PC, pelo git da pasta do programa (mercado/sincronia.py).
+function iniciarSincronia() {
+  const botao = $('#sincronizar');
+  botao.addEventListener('click', async () => {
+    botao.disabled = true;
+    $('span', botao).textContent = 'Sincronizando…';
+    try {
+      const r = await api('POST', '/api/sincronizar', {});
+      const partes = [r.trouxe.length ? `chegou do outro PC: ${r.trouxe.join(', ')}` : '',
+        r.mandou ? 'as mudanças daqui foram enviadas' : ''].filter(Boolean);
+      avisar(partes.length ? `Sincronizado: ${partes.join('; ')}.` : 'Tudo em dia: nada novo para mandar ou trazer.');
+      if (r.codigo_novo) avisar('Sincronizado, e chegou uma versão nova do programa: feche e abra de novo para usar.', false, 12000);
+      await Promise.all([carregarGrupos(), carregarValores(false), carregarBuscas(), atualizarEstado()]);
+    } catch (err) {
+      avisar(err.message, true, 12000);
+    }
+    botao.disabled = false;
+    $('span', botao).textContent = 'Sincronizar';
+  });
+}
+
 function iniciarConfig() {
   const modal = $('#modal-config');
   $('#abrir-config').addEventListener('click', () => abrirConfig());
@@ -1572,6 +1612,7 @@ async function iniciar() {
   iniciarBuscas();
   iniciarModalBusca();
   iniciarGrupos();
+  iniciarSincronia();
   iniciarConfig();
   preencherFiltros();
   desenharDetalhes();

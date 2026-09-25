@@ -381,6 +381,25 @@ def ler_conta(pagina):
     return itens
 
 
+_BOTAO_LANCE = re.compile(r'<a\b[^>]*\bdata-open-bid-modal\b[^>]*>')
+
+
+def ler_lance(pagina):
+    """Lances da conta: {'pendentes': quantos, 'maior': TCC do maior}, ou None se a página não tiver o botão.
+
+    Vêm do botão "Fazer lance" (data-bid-pending e data-bid-highest), que é o que o site mostra ao
+    clicar nele ("1 lance · maior: 75 TCC"). Não precisa de login.
+    """
+    botao = _BOTAO_LANCE.search(pagina)
+    if not botao:
+        return None
+    dados = dict(re.findall(r'data-bid-([a-z]+)="(\d+)"', botao.group(0)))
+    try:
+        return {'pendentes': int(dados['pending']), 'maior': int(dados['highest'])}
+    except KeyError:
+        return None
+
+
 # ------------------------------------------------------------------ catálogo e busca do site
 
 def catalogo():

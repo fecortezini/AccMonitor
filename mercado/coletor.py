@@ -23,6 +23,12 @@ TENTATIVAS = 3              # leituras que falham antes de desistir da conta (at
 CACHE_SITE_S = 120          # validade das respostas da busca do site
 CATALOGO_H = 24             # o catálogo do site é baixado de novo depois disso
 RECUSAS = {403, 429, 503}   # respostas do site que desligam as leituras simultâneas
+# Lances (lidos da página da conta, sem login). Sem contas para ler, o coletor relê os lances:
+LANCES_NA_TELA = 50         # as primeiras contas da busca na tela, mais a aberta nos detalhes, de perto...
+LANCES_MIN_S = 60           # ...cada uma no máximo a cada 1 min...
+LANCES_POR_MINUTO = 10      # ...e, com muitas contas, o intervalo cresce para não passar disso
+LANCES_GERAL_S = 30         # as demais, devagar: uma a cada 30 s, a de lances vistos há mais tempo
+LANCES_FALHA_S = 300        # uma conta cuja página falhou só é tentada de novo depois disso
 
 
 class Fila:
@@ -105,6 +111,10 @@ class Coletor(threading.Thread):
         self._pedidos = queue.SimpleQueue()  # contas pedidas pela interface ("Ler agora")
         self._ajudantes = []        # leem as outras contas quando há leituras simultâneas
         self._lendo = set()         # contas sendo lidas agora
+        self._na_tela = []          # as primeiras contas da busca na tela: os lances delas são acompanhados de perto
+        self._conta_aberta = None   # a conta aberta nos detalhes, também de perto
+        self._lance_falhou = {}     # rid -> quando a leitura dos lances falhou
+        self._proximo_lance_geral = 0.0
 
     # -------------------------------------------------------------- controle
 
@@ -128,6 +138,19 @@ class Coletor(threading.Thread):
 
     def posicao_na_fila(self, rid):
         return rid in self.fila or rid in self._lendo
+
+    def acompanhar(self, ids):
+        """As contas da busca na tela (chamado de outra thread): os lances das primeiras são relidos de perto."""
+        ids = [int(i) for i in ids][:LANCES_NA_TELA]
+        if ids != self._na_tela:
+            self._na_tela = ids
+            self._acordar.set()
+
+    def acompanhar_conta(self, rid):
+        """A conta aberta nos detalhes (chamado de outra thread): os lances dela vêm antes."""
+        if rid != self._conta_aberta:
+            self._conta_aberta = int(rid)
+            self._acordar.set()
 
     def run(self):
         while not self._parar.is_set():
@@ -162,7 +185,14 @@ class Coletor(threading.Thread):
         if self.fila and time.monotonic() >= pronto:
             self.ler_proxima()
             return
-        proxima = min(self._proxima_lista, pronto) if self.fila else self._proxima_lista
+        lance = None if self.fila else self._lance_a_ler()  # sem contas para ler, os lances
+        if lance is not None and time.monotonic() >= pronto:
+            self.ler_lance(*lance)
+            return
+        if self.fila or lance is not None:
+            proxima = min(self._proxima_lista, pronto)
+        else:  # confere de novo em pouco tempo: os lances das contas na tela envelhecem
+            proxima = min(self._proxima_lista, time.monotonic() + 5)
         self._acordar.wait(max(0.05, proxima - time.monotonic()))
 
     # -------------------------------------------------------------- lista e catálogo
@@ -263,7 +293,10 @@ class Coletor(threading.Thread):
             self._ultimo_detalhe = time.monotonic()
             self.estado.lendo = None
             self._lendo = set()
-        for anuncio, (itens, erro) in zip(lote, resultados):
+        for anuncio, (lido, erro) in zip(lote, resultados):
+            itens, lance = lido or (None, None)
+            if lance is not None:  # a página que veio pelos itens também traz os lances
+                self.banco.gravar_lance(anuncio['id'], lance)
             self._guardar(anuncio, itens, erro, simultaneas)
 
     def _ler_lote(self, ids):
@@ -276,8 +309,10 @@ class Coletor(threading.Thread):
         return [primeira] + [ajudante.respostas.get() for ajudante in self._ajudantes[:len(ids) - 1]]
 
     def _ler(self, rid):
+        """((itens, lances), erro) de uma conta, da mesma página."""
         try:
-            return self.site.ler_conta(self.site.baixar(self.site.URL_CONTA.format(rid))), None
+            pagina = self.site.baixar(self.site.URL_CONTA.format(rid))
+            return (self.site.ler_conta(pagina), self.site.ler_lance(pagina)), None
         except Exception as e:
             return None, e
 
@@ -319,6 +354,48 @@ class Coletor(threading.Thread):
         else:
             self._motivos.pop(rid, None)
         self.estado.fila = len(self.fila)
+
+    # -------------------------------------------------------------- lances
+
+    def _lance_a_ler(self):
+        """(conta, geral) cujos lances estão na hora de reler, ou None.
+
+        Primeiro a conta aberta e as primeiras da busca na tela: cada uma a cada 1 min, ou mais espaçado
+        se forem muitas, para não passar de LANCES_POR_MINUTO páginas. Depois, uma das outras a cada
+        LANCES_GERAL_S, a de lances vistos há mais tempo.
+        """
+        agora = time.monotonic()
+        falhas = {rid for rid, quando in self._lance_falhou.items() if agora - quando < LANCES_FALHA_S}
+        tela = [rid for rid in dict.fromkeys([self._conta_aberta] + self._na_tela) if rid and rid not in falhas]
+        intervalo = max(LANCES_MIN_S, len(tela) * 60 / LANCES_POR_MINUTO)
+        limite = (datetime.now() - timedelta(seconds=intervalo)).isoformat(timespec='seconds')
+        if (rid := self.banco.lance_velho(tela, limite)) is not None:
+            return rid, False
+        if agora >= self._proximo_lance_geral and (rid := self.banco.lance_mais_velho(falhas)) is not None:
+            return rid, True
+        return None
+
+    def ler_lance(self, rid, geral=False):
+        """Relê só os lances de uma conta: a página inteira vem, mas só o botão "Fazer lance" é lido."""
+        if geral:
+            self._proximo_lance_geral = time.monotonic() + LANCES_GERAL_S
+        try:
+            lance = self.site.ler_lance(self.site.baixar(self.site.URL_CONTA.format(rid)))
+        except Exception as e:
+            log.warning('Falha ao ler os lances da conta %s: %s', rid, e)
+            lance = None
+        finally:
+            self._ultimo_detalhe = time.monotonic()
+        if lance is None:
+            self._lance_falhou[rid] = time.monotonic()
+            return
+        self._lance_falhou.pop(rid, None)
+        antes = self.banco.anuncio(rid)
+        if self.banco.gravar_lance(rid, lance):
+            log.info('Lance novo na conta %s: %d pendentes, o maior de %s', rid, lance['pendentes'],
+                     avisos.tcc(lance['maior']))
+        if antes and (antes['lances'], antes['maior_lance']) != (lance['pendentes'], lance['maior']):
+            self.estado.mudou()  # a lista mostra o lance novo
 
     # -------------------------------------------------------------- avisos
 

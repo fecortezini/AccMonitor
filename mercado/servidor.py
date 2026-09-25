@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import avisos, site
+from . import avisos, sincronia, site
 
 log = logging.getLogger('mercado')
 PASTA_UI = Path(__file__).resolve().parent / 'ui'
@@ -59,6 +59,7 @@ class App:
             ('POST', r'/api/consultar-agora', self.consultar_agora),
             ('POST', r'/api/ler/(\d+)', self.ler_agora),
             ('POST', r'/api/sinal', self.sinal),
+            ('POST', r'/api/sincronizar', self.sincronizar),
         ]
 
     # -------------------------------------------------------------- rotas
@@ -70,15 +71,19 @@ class App:
         cfg = self.banco.config()
         return {**self.estado.como_dict(), **self.banco.contagem(), 'erro': self.banco.erro_dados or self.estado.erro,
                 'agora': datetime.now().isoformat(timespec='seconds'),
-                'rs_por_bi': cfg['rs_por_bi'], 'rs_por_tcc': cfg['rs_por_tcc'], 'intervalo_s': cfg['intervalo_s']}
+                'rs_por_bi': cfg['rs_por_bi'], 'rs_por_tcc': cfg['rs_por_tcc'], 'intervalo_s': cfg['intervalo_s'],
+                'dados_a_enviar': self.banco.dados_a_enviar()}
 
     def buscar(self, q, corpo):
-        return self.banco.buscar(corpo or {}, self.coletor.ids_do_site)
+        resultado = self.banco.buscar(corpo or {}, self.coletor.ids_do_site)
+        self.coletor.acompanhar([c['id'] for c in resultado['contas']])  # os lances das primeiras, de perto
+        return resultado
 
     def conta(self, q, corpo, rid):
         dados = self.banco.conta(int(rid))
         if dados is None:
             raise Erro(404, 'Conta não encontrada.')
+        self.coletor.acompanhar_conta(int(rid))
         dados['url'] = site.URL_CONTA.format(rid)
         dados['na_fila'] = self.coletor.posicao_na_fila(int(rid))
         return dados
@@ -180,6 +185,18 @@ class App:
     def ler_agora(self, q, corpo, rid):
         self.coletor.ler_agora(int(rid))
         return {}
+
+    def sincronizar(self, q, corpo):
+        """Botão "Sincronizar": manda para o GitHub o que mudou aqui e traz o que mudou no outro PC."""
+        if self.banco.arquivo_dados is None:
+            raise Erro(400, 'Este programa não usa o meus-dados.json.')
+        try:
+            resultado = sincronia.sincronizar(self.banco.arquivo_dados.parent, self.banco)
+        except sincronia.ErroSincronia as e:
+            raise Erro(409, str(e))
+        self.estado.mudou()
+        self.coletor.repriorizar()
+        return resultado
 
     def sinal(self, q, corpo):
         self.ultimo_sinal = time.monotonic()

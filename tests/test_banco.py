@@ -1,6 +1,7 @@
 import dataclasses
 import itertools
 import shutil
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -286,6 +287,41 @@ class Grupos(BaseBanco):
     def test_itens_do_grupo_sao_lidos_antes(self):
         self.banco.salvar_busca({'nome': 'Rank', 'filtros': {'algum': [{'grupo_id': self.gid, 'nome': 'Armas do rank'}]}})
         self.assertEqual(self.banco.ids_valorizados(), {COSMOS, self.so_45520})
+
+
+class Lances(BaseBanco):
+    def test_gravar_e_lance_novo(self):
+        self.assertFalse(self.banco.gravar_lance(45520, {'pendentes': 1, 'maior': 1700}))  # a primeira vez é a base
+        conta = self.banco.buscar({'nome': 'memoryzito'})['contas'][0]
+        self.assertEqual((conta['lances'], conta['maior_lance'], conta['lance_novo_em']), (1, 1700, None))
+        self.assertFalse(self.banco.gravar_lance(45520, {'pendentes': 1, 'maior': 1700}))  # igual: nada novo
+        self.assertTrue(self.banco.gravar_lance(45520, {'pendentes': 2, 'maior': 1800}))
+        self.assertIsNotNone(self.banco.anuncio(45520)['lance_novo_em'])
+        self.assertFalse(self.banco.gravar_lance(1, {'pendentes': 1, 'maior': 1}))  # conta que não existe
+
+    def test_qual_conta_reler(self):
+        self.banco.gravar_lance(231216, {'pendentes': 0, 'maior': 0}, quando='2026-01-01T10:00:00')
+        self.assertEqual(self.banco.lance_velho([231216, 45520], '2026-01-01T09:00:00'), 45520)  # nunca vista
+        self.assertEqual(self.banco.lance_velho([231216, 45520], '2026-01-01T11:00:00'), 231216)  # na ordem dada
+        self.assertIsNone(self.banco.lance_velho([], '2026-01-01T11:00:00'))
+        # das outras: as nunca vistas primeiro, das mais baratas; só as já lidas
+        self.assertEqual(self.banco.lance_mais_velho(), 45520)
+        self.assertEqual(self.banco.lance_mais_velho(fora={45520}), 231216)
+
+    def test_banco_antigo_ganha_as_colunas(self):
+        caminho = Path(self.pasta) / 'antigo.db'
+        con = sqlite3.connect(caminho)
+        con.execute("CREATE TABLE anuncios (id INTEGER PRIMARY KEY, nome TEXT NOT NULL DEFAULT '', "
+                    "nome_norm TEXT NOT NULL DEFAULT '', classe TEXT NOT NULL DEFAULT '', ocupacao INTEGER NOT NULL DEFAULT 0, "
+                    "nivel INTEGER NOT NULL DEFAULT 0, ceu TEXT NOT NULL DEFAULT '', ceu_norm TEXT NOT NULL DEFAULT '', "
+                    "preco INTEGER NOT NULL, primeiro_visto TEXT NOT NULL, ultimo_visto TEXT NOT NULL, "
+                    "nova INTEGER NOT NULL DEFAULT 0, ativo INTEGER NOT NULL DEFAULT 1, itens_lidos_em TEXT, "
+                    "preco_lido INTEGER, valor_kk REAL, destaques TEXT)")
+        con.close()
+        antigo = Banco(caminho)
+        self.assertLessEqual({'lances', 'maior_lance', 'lances_em', 'lance_novo_em'},
+                             {r[1] for r in antigo.con.execute('PRAGMA table_info(anuncios)')})
+        antigo.fechar()
 
 
 class Outros(BaseBanco):

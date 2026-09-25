@@ -122,6 +122,15 @@ O programa é usado em mais de um PC, e refazer a tabela de valores, as buscas e
 
 **Fila de leitura** (uma conta por vez, com `pausa_s` entre páginas, padrão 2 s, mínimo 1 s). Para cada conta, lê os itens, grava, recalcula o valor e confere as buscas com aviso ligado (seção 7). *Depois (22/09):* com `leituras_simultaneas` em 2, as duas próximas contas são baixadas ao mesmo tempo, e a pausa vem depois das duas. Se o site responder 403, 429 ou 503, a opção volta sozinha para 1.
 
+**Lances** *(25/09)*. A página da conta traz, no botão "Fazer lance", os lances pendentes e o maior (`data-bid-pending`, `data-bid-highest`), sem login. Não há endereço mais leve: o único outro é `/lances/criar`, que dá lance e exige login.
+- **Junto com os itens:** quando uma conta é lida, os lances dela vêm da mesma página.
+- **Sem contas para ler:** o coletor relê só os lances, com a mesma pausa entre páginas:
+  - a conta aberta nos detalhes e as 50 primeiras da busca na tela, cada uma a cada 1 min, ou mais espaçado se forem muitas (no máximo 10 páginas por minuto);
+  - as demais contas já lidas, uma a cada 30 s, a de lances vistos há mais tempo;
+  - uma página que falha só é tentada de novo 5 min depois.
+- **Custo:** cada página tem ~116 KB compactada. Com o programa aberto, são cerca de 5 a 12 páginas por minuto.
+- **Lance novo:** maior valor ou mais lances do que da última vez (a primeira leitura é a base). Ele marca `lance_novo_em`, e a lista o destaca por 30 min.
+
 A fila é preenchida nesta ordem:
 
 1. **Alta:** contas novas ou que baixaram de preço.
@@ -250,6 +259,12 @@ As larguras dos painéis também ficam em `config`. Elas, o Telegram e o Discord
   - **Log:** registra o motivo de cada encerramento e quando a página passa 10 min sem sinal com a janela aberta.
   - *Depois (24/09):* antes, o programa fechava o Edge quando a página passava 10 min sem sinal, mesmo com a janela aberta. O programa fechava sozinho de tempos em tempos.
 - **Atualização da interface:** ela consulta o estado a cada 3 s, mas só redesenha a lista se algo visível mudou e só recarrega os detalhes se a conta aberta mudou. O formulário de cadastro nunca é redesenhado enquanto você digita.
+- **Botão Sincronizar (25/09, `mercado/sincronia.py`):**
+  - `git fetch` e, se o GitHub andou, junta item a item três versões do `meus-dados.json`: a do último commit em comum (base), a daqui e a do GitHub (`juntar`);
+  - depois avança o `main` (`merge --ff-only`), grava o resultado, faz o commit só do arquivo e o `git push`;
+  - se o push falha, o commit é desfeito (`reset --soft`);
+  - não mexe no git com mudanças no código sem commit, fora do `main`, no meio de um merge ou com commits dos dois lados;
+  - o ponto no botão compara o hash dos dados com o do último envio (`enviado_hash`).
 - **Grupos de itens (24/09):**
   - ficam na tabela `grupos` (nome e itens em JSON, com `item_id` e nome) e no `meus-dados.json`;
   - na busca, uma condição `grupo_id` vale para qualquer item do grupo: `item_id IN (…)`, com o refino, a quantidade (somada entre os itens) e o "onde" da condição;

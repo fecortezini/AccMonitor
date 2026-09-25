@@ -35,6 +35,12 @@ class ColetorFalso:
     def repriorizar(self):
         pass
 
+    def acompanhar(self, ids):
+        self.na_tela = ids
+
+    def acompanhar_conta(self, rid):
+        self.aberta = rid
+
 
 class Servidor(unittest.TestCase):
     @classmethod

@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS anuncios (
     primeiro_visto TEXT NOT NULL, ultimo_visto TEXT NOT NULL,
     nova INTEGER NOT NULL DEFAULT 0, ativo INTEGER NOT NULL DEFAULT 1,
     itens_lidos_em TEXT, preco_lido INTEGER,
-    valor_kk REAL, destaques TEXT
+    valor_kk REAL, destaques TEXT,
+    lances INTEGER, maior_lance INTEGER, lances_em TEXT, lance_novo_em TEXT
 );
 CREATE INDEX IF NOT EXISTS anuncios_ativo ON anuncios(ativo, preco);
 
@@ -272,6 +273,11 @@ def _itens_do_grupo(lista):
     return itens
 
 
+def dados_normalizados(dados):
+    """Os dados compartilhados (de um meus-dados.json já lido) no formato em que o banco compara e grava."""
+    return _normalizar(dados)
+
+
 def _hash(dados):
     return hashlib.sha1(json.dumps(dados, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
@@ -304,6 +310,12 @@ class Banco:
         self._escrita = threading.Lock()  # o SQLite aceita um escritor por vez
         with self._escrita:
             self.con.executescript(ESQUEMA)
+            # colunas que vieram depois da primeira versão (um banco antigo ganha as colunas, vazias)
+            colunas = {r[1] for r in self.con.execute('PRAGMA table_info(anuncios)')}
+            for coluna, tipo in (('lances', 'INTEGER'), ('maior_lance', 'INTEGER'), ('lances_em', 'TEXT'),
+                                 ('lance_novo_em', 'TEXT')):
+                if coluna not in colunas:
+                    self.con.execute(f'ALTER TABLE anuncios ADD COLUMN {coluna} {tipo}')
         self.sincronizar()
 
     @property
@@ -470,18 +482,50 @@ class Banco:
         if self.erro_dados or (atual is not None and atual != self._assinatura):
             return  # o próximo sincronizar() resolve
         dados = self._dados_do_banco() if dados is None else dados
-        texto = _formatar(dados)
         try:
-            if atual is None or self.arquivo_dados.read_text(encoding='utf-8-sig') != texto:
-                temporario = self.arquivo_dados.with_name(self.arquivo_dados.name + '.tmp')
-                temporario.write_text(texto, encoding='utf-8')
-                os.replace(temporario, self.arquivo_dados)
+            self._gravar_arquivo(dados)
         except OSError as e:
             log.warning('Não consegui gravar o %s: %s', self.arquivo_dados.name, e)
             self._assinatura = None  # tenta de novo no próximo sincronizar()
             return
-        self._assinatura = self._assinatura_do_arquivo()
         self.salvar_meta('dados_hash', _hash(dados))
+
+    def _gravar_arquivo(self, dados):
+        """Grava os dados no arquivo (de uma vez, pelo .tmp); se o texto já é o mesmo, não mexe nele."""
+        texto = _formatar(dados)
+        if self._assinatura_do_arquivo() is None or self.arquivo_dados.read_text(encoding='utf-8-sig') != texto:
+            temporario = self.arquivo_dados.with_name(self.arquivo_dados.name + '.tmp')
+            temporario.write_text(texto, encoding='utf-8')
+            os.replace(temporario, self.arquivo_dados)
+        self._assinatura = self._assinatura_do_arquivo()
+
+    # usados pela sincronia com o git (mercado/sincronia.py)
+
+    @contextmanager
+    def arquivo_em_uso(self):
+        """Segura o meus-dados.json: enquanto a sincronia mexe nele pelo git, o programa não lê nem grava."""
+        with self._trava_dados:
+            yield
+
+    def dados_compartilhados(self):
+        """Os dados do meus-dados.json (tabela, buscas, grupos e configurações), já iguais aos do banco."""
+        with self._trava_dados:
+            self.sincronizar()
+            if self.erro_dados:
+                raise ValueError(self.erro_dados)
+            return self._dados_do_banco()
+
+    def dados_a_enviar(self):
+        """Os dados mudaram desde a última sincronia com o GitHub (o botão Sincronizar ganha um ponto)."""
+        return self.arquivo_dados is not None and self.meta('dados_hash') != self.meta('enviado_hash')
+
+    def substituir_dados(self, dados):
+        """Troca os dados compartilhados (vindos da sincronia) no banco e no arquivo."""
+        dados = _normalizar(dados)
+        with self._trava_dados:
+            self._importar(dados)
+            self._gravar_arquivo(dados)
+            self.erro_dados = None
 
     @contextmanager
     def _mudando_dados(self):
@@ -524,8 +568,9 @@ class Banco:
                 con.execute('UPDATE anuncios SET nome=?, nome_norm=?, classe=?, ocupacao=?, nivel=?, ceu=?, '
                             'ceu_norm=?, preco=?, ultimo_visto=?, ativo=1 WHERE id=?', (*campos, a.id))
                 if not r['ativo']:
-                    con.execute('UPDATE anuncios SET nova=1, primeiro_visto=?, itens_lidos_em=NULL, '
-                                'preco_lido=NULL, valor_kk=NULL, destaques=NULL WHERE id=?', (quando, a.id))
+                    con.execute('UPDATE anuncios SET nova=1, primeiro_visto=?, itens_lidos_em=NULL, preco_lido=NULL, '
+                                'valor_kk=NULL, destaques=NULL, lances=NULL, maior_lance=NULL, lances_em=NULL, '
+                                'lance_novo_em=NULL WHERE id=?', (quando, a.id))
                     reativados.append(a.id)
                 elif a.preco < r['preco']:
                     baixaram.append((a.id, r['preco'], a.preco))
@@ -594,6 +639,44 @@ class Banco:
         if vinculou and self.arquivo_dados is not None:
             with self._trava_dados:
                 self._exportar()  # o item_id também vai para o meus-dados.json
+
+    # -------------------------------------------------------------- lances
+
+    def gravar_lance(self, anuncio_id, lance, quando=None):
+        """Lances pendentes da conta e o maior deles, lidos do botão "Fazer lance" do site.
+
+        Devolve True se chegou lance novo: maior, ou mais lances, do que da última vez que foram vistos.
+        Na primeira vez que os lances da conta são vistos, nada conta como novo.
+        """
+        quando = quando or agora()
+        with self._transacao() as con:
+            antes = con.execute('SELECT lances, maior_lance, lances_em FROM anuncios WHERE id = ?', (anuncio_id,)).fetchone()
+            if antes is None:
+                return False
+            novo = antes['lances_em'] is not None and (lance['maior'] > (antes['maior_lance'] or 0)
+                                                       or lance['pendentes'] > (antes['lances'] or 0))
+            con.execute('UPDATE anuncios SET lances = ?, maior_lance = ?, lances_em = ?, '
+                        'lance_novo_em = CASE WHEN ? THEN ? ELSE lance_novo_em END WHERE id = ?',
+                        (lance['pendentes'], lance['maior'], quando, novo, quando, anuncio_id))
+        return novo
+
+    def lance_velho(self, ids, antes_de):
+        """A primeira das contas ids (na ordem dada) que está no ar e teve os lances vistos antes de antes_de, ou nunca."""
+        if not ids:
+            return None
+        velhas = {r[0] for r in self.con.execute(
+            f'SELECT id FROM anuncios WHERE ativo = 1 AND id IN ({_marcadores(len(ids))}) '
+            'AND (lances_em IS NULL OR lances_em < ?)', (*ids, antes_de))}
+        return next((i for i in ids if i in velhas), None)
+
+    def lance_mais_velho(self, fora=()):
+        """A conta no ar, já lida, cujos lances foram vistos há mais tempo (as nunca vistas primeiro, das mais baratas)."""
+        fora = list(fora)
+        sem = f'AND id NOT IN ({_marcadores(len(fora))}) ' if fora else ''
+        r = self.con.execute(
+            f'SELECT id FROM anuncios WHERE ativo = 1 AND itens_lidos_em IS NOT NULL {sem}'
+            'ORDER BY lances_em IS NOT NULL, lances_em, preco, id LIMIT 1', fora).fetchone()
+        return r[0] if r else None
 
     def gravar_catalogo(self, itens):
         with self._transacao() as con:
@@ -728,6 +811,8 @@ class Banco:
                  'nova': bool(r['nova']) and r['primeiro_visto'] >= _ha_24h(),
                  'primeiro_visto': r['primeiro_visto'], 'lida': lida,
                  'destaques': json.loads(r['destaques'] or '[]'),
+                 'lances': r['lances'], 'maior_lance': r['maior_lance'], 'lances_em': r['lances_em'],
+                 'lance_novo_em': r['lance_novo_em'],
                  'valor_kk': None, 'valor_rs': None, 'preco_rs': r['preco'] * cfg['rs_por_tcc'],
                  'lucro_rs': None, 'lucro_pct': None}
         if lida and kk is not None:

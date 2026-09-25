@@ -26,6 +26,15 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Janela própria:** o Edge abre em modo aplicativo, e fechar a janela encerra o programa.
 
 **Melhorias depois da primeira versão:**
+- **Botão Sincronizar (25/09):** no topo. Manda para o GitHub o que mudou no `meus-dados.json` e traz o que mudou no outro PC, pelo git da pasta (`mercado/sincronia.py`).
+  - **Os dois PCs mudaram:** os dados se juntam item a item. Valores, buscas e grupos são comparados pelo id e configurações pela chave, e no mesmo item fica a versão mais recente. Não sobra conflito do git.
+  - **Quando não mexe no git:** com mudanças no código sem commit, fora do `main` ou com commits dos dois lados. Nesses casos ele explica o que falta.
+  - **Se o envio falha:** o commit é desfeito e os dados ficam para a próxima.
+  - **Ponto dourado:** mudanças daqui ainda não enviadas.
+  - **Versão nova do programa:** se chegar uma, pede para fechar e abrir de novo.
+- **Lances (25/09):** a lista mostra embaixo do preço o maior lance que a conta recebeu, e os detalhes mostram "N lances · maior: X". Vem do botão "Fazer lance" da página da conta (`data-bid-pending` e `data-bid-highest`), sem login.
+  - **Ritmo:** as 50 primeiras contas da busca e a conta aberta são relidas a cada 1 min (mais espaçado se forem muitas, até 10 páginas por minuto). As outras, uma a cada 30 s.
+  - **Lance novo:** maior valor ou mais lances do que da última vez; fica verde por 30 min e vai para o log.
 - **Grupos de itens (24/09):** juntam itens buscados juntos, como as armas de um rank.
   - **Na busca:** o grupo vira uma condição só, que vale para qualquer item dele. Funciona no "Tem item" e no "Tem pelo menos um", e escolher item por item continua possível.
   - **Criar e editar:** pelo link "grupos", no painel de filtros.
@@ -72,7 +81,7 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Busca por parte do nome (21/09):** o "Tem item" aceita parte do nome, inclusive de itens ainda não vistos nas contas lidas. Exemplo: "pedra do dem" no começo da carga, quando só as contas baratas foram lidas. Outro exemplo: "relíquia maravilha", que soma as três relíquias.
 
 **Testes:**
-- **Automáticos:** 115, com páginas reais do site salvas. Todos passam.
+- **Automáticos:** 138, com páginas reais do site salvas. A sincronia é testada com git de verdade: um "GitHub" numa pasta e dois clones. Todos passam.
 - **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Rodou sem erros na primeira versão. Depois das melhorias, as telas foram conferidas num Edge invisível com um script avulso, porque o PC onde foram feitas não tem Node. Esse script cobriu os passos do teste antigo e os novos, sem erros. Em 22/09 o teste rodou de novo, com Node, e passou sem erros.
 - **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
 - **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
@@ -110,7 +119,7 @@ cd Classic187AccountMonitor
 - **Rodar os testes:**
   - automáticos: `py -m unittest discover -s tests -t .`
   - interface: `py -m mercado --sem-janela --porta 8765` e, em outro terminal, `node tests/interface/testar_interface.mjs`
-- **Dados:** a tabela de valores, as buscas e as configurações chegam com o `git pull` (`meus-dados.json`). Depois de mudar algo, envie com `git add meus-dados.json`, `git commit` e `git push`. As contas o programa lê sozinho em cada PC (o `mercado.db`, fora do git).
+- **Dados:** a tabela de valores, as buscas, os grupos e as configurações vão e vêm pelo botão **Sincronizar**, no topo. Ou pelo git: `git pull`, e `git add meus-dados.json`, `git commit` e `git push`. As contas o programa lê sozinho em cada PC (o `mercado.db`, fora do git).
 
 ## Mapa do código
 
@@ -122,6 +131,7 @@ cd Classic187AccountMonitor
 | `mercado/coletor.py` | Consultas periódicas, fila de leitura e disparo dos avisos. |
 | `mercado/avisos.py` | Canais de aviso. |
 | `mercado/servidor.py` | API local usada pela interface. |
+| `mercado/sincronia.py` | Botão Sincronizar: o `meus-dados.json` com o GitHub, juntando os dados item a item. |
 | `mercado/ui/` | Interface (`index.html`, `app.css`, `app.js`). |
 | `mercado/__main__.py` | Abre tudo e a janela do Edge. |
 | `tests/` | Testes automáticos, páginas reais salvas e o teste de interface. |

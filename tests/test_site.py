@@ -79,6 +79,21 @@ class LerConta(unittest.TestCase):
         self.assertEqual(site.ler_conta('<html><body>anúncio removido</body></html>'), [])
 
 
+class LerLance(unittest.TestCase):
+    def test_conta_sem_lance(self):
+        self.assertEqual(site.ler_lance(paginas.conta(45520)), {'pendentes': 0, 'maior': 0})
+
+    def test_conta_com_lance(self):
+        # como na conta Viper: "1 lance · maior: 75 TCC"
+        botao = ('<a href="#fazer-lance" class="btn mkt-bid-btn" data-open-bid-modal\n\tdata-bid-game="pw187"\n'
+                 '\tdata-bid-roleid="77872" data-bid-price="100" data-bid-min="70" data-bid-character="Viper"\n'
+                 '\tdata-bid-pending="1"\n\tdata-bid-highest="75"\n\tdata-bid-mine="0">')
+        self.assertEqual(site.ler_lance(f'<html>{botao}Fazer lance</a></html>'), {'pendentes': 1, 'maior': 75})
+
+    def test_pagina_sem_botao_de_lance(self):
+        self.assertIsNone(site.ler_lance('<html><a href="#comprar">Comprar</a></html>'))
+
+
 class _SiteLocal(BaseHTTPRequestHandler):
     """Imita o site: responde em gzip, mantém a conexão aberta e fecha a que fica parada."""
     protocol_version = 'HTTP/1.1'

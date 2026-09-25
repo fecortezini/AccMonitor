@@ -5,6 +5,7 @@ import threading
 import time
 import unittest
 import urllib.error
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from mercado import site
@@ -29,6 +30,7 @@ class SiteFalso:
         self.buscas = []
         self.site_ids = {231216, 3152}
         self.recusar = set()        # urls que o site responde com HTTP 429
+        self.lances = {}            # rid -> {'pendentes', 'maior'}; sem a conta, nenhum lance
         self.demora = 0             # segundos de cada download
         self.baixando = self.max_baixando = 0
         self._trava = threading.Lock()
@@ -53,6 +55,9 @@ class SiteFalso:
         rid = int(url.split('/')[1])
         self.lidas.append(rid)
         return self.contas.get(rid, [site.Item(secao='equipado', item_id=1, nome='Arma Comum')])
+
+    def ler_lance(self, url):
+        return dict(self.lances.get(int(url.split('/')[1]), {'pendentes': 0, 'maior': 0}))
 
     def catalogo(self):
         return [{'item_id': COSMOS, 'nome': 'Cosmos', 'grupo': 'livros'}]
@@ -170,6 +175,65 @@ class LeiturasSimultaneas(BaseColetor):
         self.assertIn('recusou', self.coletor.estado.erro)
         self.assertTrue(self.banco.anuncio(231216)['itens_lidos_em'])  # a outra conta do par foi lida
         self.assertIn(45520, self.coletor.fila)  # a recusada volta para a fila
+
+
+class Lances(BaseColetor):
+    """Lances: vêm junto com os itens e, sem contas para ler, são relidos (as contas da tela de perto)."""
+
+    def ha(self, segundos):
+        return (datetime.now() - timedelta(seconds=segundos)).isoformat(timespec='seconds')
+
+    def test_vem_junto_com_os_itens(self):
+        self.site.lances[45520] = {'pendentes': 1, 'maior': 1700}
+        self.coletor.fila.colocar(45520, ALTA)
+        self.coletor.ler_proxima()
+        a = self.banco.anuncio(45520)
+        self.assertEqual((a['lances'], a['maior_lance'], a['lance_novo_em']), (1, 1700, None))  # primeira vez: a base
+
+    def test_contas_da_tela_primeiro(self):
+        self.coletor.acompanhar([231216, 45520])
+        self.coletor.acompanhar_conta(3152)
+        self.assertEqual(self.coletor._lance_a_ler(), (3152, False))  # a aberta nos detalhes vem antes
+        self.coletor.ler_lance(3152)
+        self.assertEqual(self.coletor._lance_a_ler(), (231216, False))
+        self.coletor.ler_lance(231216)
+        self.coletor.ler_lance(45520)
+        # todas as da tela em dia: vem uma das outras, das já lidas (a 45520, ao ler os itens, já tem lances)
+        self.banco.gravar_itens(1856, [site.Item(secao='equipado', item_id=1, nome='Arma')], 15000)
+        self.assertEqual(self.coletor._lance_a_ler(), (1856, True))
+        self.coletor.ler_lance(1856, geral=True)
+        self.assertIsNone(self.coletor._lance_a_ler())  # a próxima das outras só daqui a 30 s
+
+    def test_com_muitas_contas_na_tela_o_intervalo_cresce(self):
+        tela = [a.id for a in list(self.site.anuncios.values())[:30]]
+        self.coletor.acompanhar(tela)
+        for rid in tela:
+            self.banco.gravar_lance(rid, {'pendentes': 0, 'maior': 0}, quando=self.ha(90))
+        self.coletor._proximo_lance_geral = time.monotonic() + 999
+        self.assertIsNone(self.coletor._lance_a_ler())  # 30 contas: cada uma a cada 3 min
+        self.coletor.acompanhar(tela[:1])
+        self.assertEqual(self.coletor._lance_a_ler(), (tela[0], False))  # uma só: a cada 1 min
+
+    def test_lance_novo(self):
+        self.coletor.acompanhar([45520])
+        self.coletor.ler_lance(45520)
+        self.banco.con.execute("UPDATE anuncios SET lances_em = '2000-01-01T00:00:00' WHERE id = 45520")
+        self.site.lances[45520] = {'pendentes': 2, 'maior': 1900}
+        versao = self.coletor.estado.versao
+        with self.assertLogs('mercado', 'INFO') as registro:
+            self.coletor.ler_lance(45520)
+        self.assertIn('Lance novo na conta 45520', registro.output[0])
+        a = self.banco.anuncio(45520)
+        self.assertEqual((a['lances'], a['maior_lance']), (2, 1900))
+        self.assertIsNotNone(a['lance_novo_em'])
+        self.assertGreater(self.coletor.estado.versao, versao)  # a lista mostra o lance novo
+
+    def test_pagina_que_falha_espera_para_tentar_de_novo(self):
+        self.coletor.acompanhar([45520, 231216])
+        self.site.recusar = {'conta/45520'}
+        with self.assertLogs('mercado', 'WARNING'):
+            self.coletor.ler_lance(45520)
+        self.assertEqual(self.coletor._lance_a_ler(), (231216, False))
 
 
 class Avisos(BaseColetor):

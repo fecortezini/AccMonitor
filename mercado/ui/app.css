@@ -50,6 +50,12 @@ svg.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-wid
 .cotacao { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--ln2); border-radius: 8px; font-size: 12px; color: var(--tx2); background: var(--s2); }
 .cotacao:hover { border-color: var(--ouro); }
 .cotacao b { color: var(--ouro2); font-variant-numeric: tabular-nums; }
+/* Sincronizar: um ponto dourado quando há mudanças daqui ainda não enviadas; o ícone gira enquanto sincroniza */
+.sincronizar { position: relative; }
+.sincronizar.pendente::after { content: ''; position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--ouro); box-shadow: 0 0 0 2px var(--bg); }
+.sincronizar:disabled { opacity: .7; cursor: default; }
+.sincronizar:disabled svg { animation: girar 1s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
 .status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--tx3); white-space: nowrap; }
 .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--tx3); }
 .status.ok i { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
@@ -199,6 +205,9 @@ input::placeholder { color: #566077; }
 .tabela td.conta .selo { margin-left: 0; }
 .tabela .sub { display: block; font-size: 11px; color: var(--tx3); font-weight: 400; }
 .tabela .lucro b { display: block; }
+/* Lance recebido: dourado; lance novo (últimos 30 min), verde */
+.tabela .sub.lance, .dinheiro-grade small.lance { color: var(--ouro2); }
+.tabela .sub.lance.novo, .dinheiro-grade small.lance.novo { color: var(--ok); font-weight: 600; }
 .tabela .destaques { display: flex; gap: 4px; flex-wrap: nowrap; overflow: hidden; max-width: 260px; }
 .tabela .destaques .pill { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 22px; }
 /* Pesquisados: a soma e cada item em colunas próprias (o título abrange todas), mais juntas entre si */

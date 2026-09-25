@@ -32,13 +32,13 @@ Nos outros PCs, os passos 3 e 4 não são necessários: os valores, as buscas e 
 
 A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configurações ficam no arquivo **`meus-dados.json`**, que vai pelo git junto com o programa. Você configura uma vez, e todos os PCs usam os mesmos dados.
 
-- **Onde você mudou algo:** o programa grava no `meus-dados.json` a cada mudança. Para levar aos outros PCs, envie o arquivo:
-  ```
-  git add meus-dados.json
-  git commit -m "Meus dados"
-  git push
-  ```
-- **No outro PC:** rode `git pull` e abra o programa. Se ele já estiver aberto, a mudança aparece em poucos segundos.
+- **Botão Sincronizar** (no topo): clique ao terminar num PC e ao começar no outro.
+  - **O que faz:** manda para o GitHub o que mudou aqui e traz o que mudou lá, pelo git da pasta do programa. O programa grava no `meus-dados.json` a cada mudança.
+  - **Ponto dourado no botão:** há mudanças daqui ainda não enviadas.
+  - **Os dois PCs mudaram:** os dados se juntam item a item e nada se perde. Se o mesmo item mudou nos dois, fica a versão mais recente.
+  - **Versão nova do programa:** se chegar uma, ele avisa para fechar e abrir de novo.
+  - **Quando ele não mexe no git:** com mudanças no código ainda sem commit, fora do branch `main` ou com commits dos dois lados. Nesses casos ele explica o que falta.
+- **Sem o botão:** os mesmos passos podem ser feitos pelo git (`git add meus-dados.json`, `git commit`, `git push` e, no outro PC, `git pull`). Com o programa aberto, o que chega pelo `git pull` aparece em poucos segundos.
 - **O que fica em cada PC:**
   - as contas lidas do site: cada PC lê as suas, começando pelas que têm itens da sua tabela;
   - o histórico de avisos;
@@ -63,7 +63,11 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
   - **Mudanças:** um grupo alterado passa a valer em todas as buscas salvas que o usam.
   - **No outro PC:** os grupos vão no `meus-dados.json`.
   - **Já criados:** **Armas UP4** (as 21 armas com Nível de Ataque +70) e **Armas UP3** (as 32 com +40). O UP3 inclui também as outras armas de Rank 9 com +40, como o Atirador Nebuloso.
-- **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes). Contas que ainda não foram lidas, mas que a busca do site diz terem o item, aparecem como **A CONFIRMAR**.
+- **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes).
+- **Lances recebidos:** embaixo do mínimo aparece o maior lance que a conta já recebeu, como "lance 1.296" ou "lance 885 · 2" com dois lances. É o mesmo "Lances pendentes" que o site mostra ao clicar em Fazer lance, sem precisar de login. Um lance novo (dos últimos 30 min) fica verde, com ▲.
+  - **As 50 primeiras contas da busca e a conta aberta:** os lances são relidos a cada 1 min, ou mais espaçado se forem muitas, até 10 páginas por minuto. Serve para acompanhar se alguém deu lance numa conta que você quer.
+  - **As outras:** relidas devagar, uma a cada 30 s. O tooltip do lance diz há quanto tempo ele foi visto.
+  - **O custo:** cerca de 5 a 12 páginas de conta por minuto (116 KB cada) enquanto o programa está aberto. Contas que ainda não foram lidas, mas que a busca do site diz terem o item, aparecem como **A CONFIRMAR**.
 - **Itens pesquisados:** com condições de item, a lista ganha as colunas **Por un.** e **Pesquisados**:
   - Por un. é o preço dividido pela soma de todos os itens pesquisados (TCC por unidade). Embaixo, pequeno, aparece o mesmo cálculo com o lance mínimo (também na aba Pesquisados dos detalhes);
   - os itens ficam na ordem em que você os escolhe (por exemplo, do mais importante para o menos importante), e as colunas e a aba Pesquisados seguem essa ordem. Ela não muda quais contas batem nem o Por un.;
@@ -132,5 +136,5 @@ py -m mercado --sem-janela --porta 8765   # só o servidor, para abrir no navega
 ```
 
 - **Segurança:** o servidor local só aceita conexões do próprio PC. Cada chamada da interface leva um token gerado a cada execução.
-- **Ritmo:** o programa só lê páginas públicas do marketplace. Mantenha o intervalo e a pausa em valores razoáveis.
+- **Ritmo:** o programa só lê páginas públicas do marketplace. Mantenha o intervalo e a pausa em valores razoáveis. O ritmo dos lances fica nas constantes `LANCES_*` do `mercado/coletor.py`.
 - **Se o site mudar:** se o layout do marketplace mudar, a leitura pode falhar. Nesse caso aparece um aviso no topo da janela e nada do que já foi guardado é apagado.
