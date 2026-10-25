@@ -65,6 +65,13 @@ class Juntar(unittest.TestCase):
         self.assertEqual([(b['nome'], b['filtros']['algum'][0]['grupo_id']) for b in juntos['buscas']],
                          [('De lá', 1), ('Daqui', 2)])
 
+    def test_valor_de_grupo_segue_o_grupo_que_mudou_de_id(self):
+        grupo = lambda nome: {'id': 1, 'nome': nome, 'itens': [], 'criado_em': '', 'atualizado_em': ''}
+        local = dados([{**valor(1, 'UP4', 100), 'grupo_id': 1}], grupos=[grupo('UP4')])
+        remoto = dados([{**valor(1, 'UP3', 50), 'grupo_id': 1}], grupos=[grupo('UP3')])
+        juntos = sincronia.juntar(dados(), local, remoto)
+        self.assertEqual([(v['nome'], v['grupo_id']) for v in juntos['valores']], [('UP3', 1), ('UP4', 2)])
+
 
 def git(pasta, *args):
     r = subprocess.run(['git', *args], cwd=pasta, capture_output=True, text=True, encoding='utf-8')

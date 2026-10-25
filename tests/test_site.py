@@ -66,6 +66,13 @@ class LerConta(unittest.TestCase):
         self.assertEqual((demonio.nome, demonio.efeito), ('Pedra do Demônio', 'Nível de Ataque +3'))
         self.assertEqual(total(self.minha, secao='engastada', item_id=38153), 24)
 
+    def test_runas_com_a_habilidade(self):
+        runas = [i for i in self.cosmos if i.secao == 'runas']
+        self.assertEqual(len(runas), 15)
+        self.assertEqual((runas[0].nome, runas[0].efeito), ('Runa Verdejante Nv. 9', 'Equipada em ΨDevorar'))
+        self.assertEqual(sum(1 for r in runas if r.efeito), 9)  # as 9 incorporadas nas habilidades; o resto está guardado
+        self.assertFalse([i for i in self.cosmos if i.efeito.startswith('Equipada') and i.secao != 'runas'])
+
     def test_tooltip_so_texto_e_cor(self):
         arma = next(i for i in self.minha if i.secao == 'equipado')
         self.assertEqual(arma.tooltip[0], [['★★★Caçador Penado +12', '#ffffff']])

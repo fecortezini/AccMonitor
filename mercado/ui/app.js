@@ -66,13 +66,19 @@ function quando(iso) {
     : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + hora(iso);
 }
 
+const PROGRAMA_FECHADO = 'O Mercado PW não está rodando. Feche esta janela e abra de novo pelo “Mercado PW.bat”.';
 async function api(metodo, caminho, corpo) {
   const opcoes = { method: metodo, headers: { 'X-Token': TOKEN } };
   if (corpo !== undefined) {
     opcoes.headers['Content-Type'] = 'application/json';
     opcoes.body = JSON.stringify(corpo);
   }
-  const r = await fetch(caminho, opcoes);
+  let r;
+  try {
+    r = await fetch(caminho, opcoes);
+  } catch {  // sem resposta nenhuma: o programa foi encerrado e esta janela ficou aberta
+    throw new Error(PROGRAMA_FECHADO);
+  }
   const dados = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(dados.erro || `Erro ${r.status}`);
   return dados;
@@ -108,20 +114,29 @@ const S = {
   valores: [], resumo: null, form: null, confirmando: null,
   buscas: [], avisos: [], buscaAtual: lembrar('buscaAtual', null), grupos: [],
   classesDesenhadas: '', ceusDesenhados: '',
+  lerPrimeiro: lembrar('lerPrimeiro', true),  // "Ler primeiro as destes filtros", na barra de leitura
 };
+// Linhas da tabela por item: i<item_id>, n<nome> (ainda sem item_id) e g<item_id> (as dos grupos que têm o item)
 const valoresPorItem = () => {
   const m = new Map();
+  const por = (k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
   for (const v of S.valores) {
-    const k = v.item_id != null ? `i${v.item_id}` : `n${norm(v.nome)}`;
-    if (!m.has(k)) m.set(k, []);
-    m.get(k).push(v);
+    if (v.grupo_id != null) for (const id of v.itens || []) por(`g${id}`, v);
+    else por(v.item_id != null ? `i${v.item_id}` : `n${norm(v.nome)}`, v);
   }
   for (const l of m.values()) l.sort((a, b) => b.refino_min - a.refino_min);
   return m;
 };
+/** A linha que vale para o item, como no servidor (mercado/valor.py, Tabela.linha_para): a faixa do próprio item;
+ *  sem uma que sirva, a dos grupos dele, a que dá mais. */
 function linhaValorPara(it, indice = valoresPorItem()) {
+  const refino = it.refino || 0;
   const faixas = indice.get(`i${it.item_id}`) || indice.get(`n${norm(it.nome)}`) || [];
-  return faixas.find(v => v.refino_min <= (it.refino || 0)) || null;
+  const propria = faixas.find(v => v.refino_min <= refino);
+  if (propria) return propria;
+  const porGrupo = new Map();  // a faixa de cada grupo: a primeira que serve, já que estão do maior refino ao menor
+  for (const v of indice.get(`g${it.item_id}`) || []) if (v.refino_min <= refino && !porGrupo.has(v.grupo_id)) porGrupo.set(v.grupo_id, v);
+  return [...porGrupo.values()].sort((a, b) => b.valor_kk - a.valor_kk)[0] || null;
 }
 
 // ================================================================ topo e estado do coletor
@@ -139,6 +154,11 @@ async function atualizarEstado() {
     const st = $('#status');
     st.className = 'status ruim';
     st.querySelector('span').textContent = 'Programa sem resposta';
+    if (err.message === PROGRAMA_FECHADO) {  // na faixa do topo, para não clicar em nada achando que funciona
+      const faixa = $('#faixa');
+      faixa.querySelector('span').textContent = PROGRAMA_FECHADO;
+      faixa.hidden = false;
+    }
   }
 }
 
@@ -162,14 +182,38 @@ function desenharTopo(e) {
   const faixa = $('#faixa');
   faixa.hidden = !(e.erro && !e.sem_conexao_desde);
   if (!faixa.hidden) faixa.querySelector('span').textContent = e.erro;
+  desenharCarga();
+}
+
+/** Barra "Lendo as contas" enquanto a base não está toda lida. Com filtros, as contas deles podem ser lidas primeiro
+ *  (para_ler: as que faltam ler e podem bater com eles, que o servidor devolve na busca). */
+function desenharCarga() {
+  const e = S.estado;
+  if (!e) return;
   const carga = $('#carga');
-  const faltam = e.ativas - e.lidas;
-  carga.hidden = !e.ativas || faltam <= 0;
-  if (!carga.hidden) {
-    carga.querySelector('i').style.width = `${(e.lidas / e.ativas) * 100}%`;
-    carga.querySelector('span').innerHTML = `Lendo as contas: <b>${inteiro(e.lidas)}</b> de ${inteiro(e.ativas)}. `
-      + 'O valor e os filtros de materiais ficam completos quando terminar; as contas novas são lidas primeiro.';
+  carga.hidden = !e.ativas || e.ativas - e.lidas <= 0;
+  if (carga.hidden) return;
+  const filtrando = temFiltro();
+  const botao = $('#ler-primeiro');
+  botao.hidden = !filtrando;
+  botao.classList.toggle('on', S.lerPrimeiro);
+  carga.querySelector('i').style.width = `${(e.lidas / e.ativas) * 100}%`;
+  const doFiltro = S.resultado?.para_ler;
+  let texto = 'O valor e os filtros de materiais ficam completos quando terminar; as contas novas são lidas primeiro.';
+  if (filtrando && S.lerPrimeiro && doFiltro != null) {
+    texto = doFiltro ? `Primeiro as que podem bater com estes filtros: faltam <b>${inteiro(doFiltro)}</b>. Depois, as outras.`
+      : 'As contas destes filtros já foram lidas. Agora, as outras.';
+  } else if (!filtrando) {
+    texto += ' Com filtros, dá para ler primeiro as contas deles.';
   }
+  carga.querySelector('span').innerHTML = `Lendo as contas: <b>${inteiro(e.lidas)}</b> de ${inteiro(e.ativas)}. ${texto}`;
+}
+
+/** Algum filtro que limita as contas? Lucro e ordem não contam: não dá para saber o lucro sem ler a conta. */
+function temFiltro() {
+  const f = S.filtros;
+  return !!(f.nome || f.classes.length || f.preco_min != null || f.preco_max != null || f.nivel_min != null || f.ceu
+    || f.itens.length || f.algum.length || f.so_novas);
 }
 
 const recarregarVista = debounce(() => {
@@ -296,6 +340,12 @@ function filtrosMudaram() {
 }
 
 function iniciarFiltros() {
+  $('#ler-primeiro').addEventListener('click', () => {
+    S.lerPrimeiro = !S.lerPrimeiro;
+    guardar('lerPrimeiro', S.lerPrimeiro);
+    desenharCarga();
+    buscar();  // o pedido vai junto com a busca
+  });
   $('#f-classes').addEventListener('click', e => {
     const chip = e.target.closest('[data-classe]');
     if (!chip) return;
@@ -379,7 +429,7 @@ function iniciarFiltros() {
  *  porNome ({ titulo(texto), nota, sempre }) oferece usar o texto digitado, para itens que ainda não
  *  apareceram em nenhuma conta lida; com "sempre", a opção aparece mesmo quando há sugestões.
  *  comGrupos põe os grupos de itens antes dos itens (todos, com a caixa vazia); escolher um grupo
- *  devolve { grupo_id, nome, itens }. */
+ *  devolve { grupo_id, nome, itens }. Com 'valor', a legenda do grupo é a da tabela de valores (vale para cada item). */
 function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null, comGrupos = false) {
   const entrada = $('input', raiz);
   const lista = $('.sugestoes', raiz);
@@ -400,7 +450,8 @@ function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null, comGrupos =
     let html = opcoes.map(({ grupo, item }, i) => `
       <button class="sugestao ${i === destaque ? 'on' : ''}" data-i="${i}">
         ${grupo ? `<span class="icone-grupo"><svg class="ic"><use href="#i-list"/></svg></span>
-          <div><b>${marcar(grupo.nome)}</b><small>Grupo · qualquer um de ${inteiro(grupo.itens.length)} ${grupo.itens.length === 1 ? 'item' : 'itens'}</small></div>`
+          <div><b>${marcar(grupo.nome)}</b><small>${comGrupos === 'valor' ? descricaoItem({ grupo_id: grupo.id, itens: grupo.itens })
+            : `Grupo · qualquer um de ${inteiro(grupo.itens.length)} ${grupo.itens.length === 1 ? 'item' : 'itens'}`}</small></div>`
         : `<img src="${ICONE(item.item_id)}" alt="" ${SEM_IMG}>
           <div><b>${marcar(item.nome)}</b><small>${esc(descricaoItem(item))}</small></div>`}${i === destaque ? '<kbd>Enter</kbd>' : ''}
       </button>`).join('');
@@ -454,6 +505,10 @@ const TIPOS = { livros: 'Livro', armas: 'Arma', cartas: 'Carta', pedra: 'Pedra e
   calcas: 'Calça', botas: 'Botas', braceletes: 'Bracelete', colares: 'Colar', capas: 'Capa', aneis: 'Anel',
   ornamentos: 'Ornamento', astrolabios: 'Astrolábio', conduites: 'Conduíte', item: 'Item', equipamento: 'Equipamento' };
 function descricaoItem(it) {
+  if (it.grupo_id != null) {
+    const n = it.itens?.length || 0;
+    return `Grupo · vale para cada um dos ${inteiro(n)} ${n === 1 ? 'item' : 'itens'}`;
+  }
   const tipo = TIPOS[it.tipo] || 'Item';
   const partes = [it.tipo === 'pedra' && it.efeito ? `${tipo} · ${it.efeito}` : tipo];
   partes.push(it.contas ? `vista em ${inteiro(it.contas)} ${it.contas === 1 ? 'conta' : 'contas'}` : (it.no_catalogo ? 'no catálogo do site' : 'ainda não vista'));
@@ -465,12 +520,13 @@ let buscaSeq = 0;
 async function buscar() {
   const meu = ++buscaSeq;
   try {
-    const r = await api('POST', '/api/buscar', S.filtros);
+    const r = await api('POST', '/api/buscar', { ...S.filtros, ler_primeiro: S.lerPrimeiro && temFiltro() });
     if (meu !== buscaSeq) return;
     const condicoes = () => JSON.stringify([itensDaBusca(), algumDaBusca()]);
     const antes = condicoes();
     S.resultado = r;
     desenharLista();
+    desenharCarga();
     if (S.conta && condicoes() !== antes) {  // a aba "Pesquisados" acompanha a busca
       if (antes === '[[],[]]') S.subAba = 'busca';
       desenharDetalhes();
@@ -680,9 +736,9 @@ function recarregarDetalhes() {
 
 const ABAS_CONTA = [
   ['equipado', 'Equipado'], ['inventario', 'Mochila'], ['banco', 'Banco'], ['cartas', 'Cartas'],
-  ['mascotes', 'Mascotes'], ['engastada', 'Pedras'], ['outros', 'Outros'],
+  ['mascotes', 'Mascotes'], ['engastada', 'Pedras'], ['runas', 'Runas'], ['outros', 'Outros'],
 ];
-const SECOES_PRINCIPAIS = new Set(['equipado', 'inventario', 'banco', 'cartas', 'mascotes', 'engastada']);
+const SECOES_PRINCIPAIS = new Set(['equipado', 'inventario', 'banco', 'cartas', 'mascotes', 'engastada', 'runas']);
 const NOMES_SECAO = { missoes: 'Missões', runas: 'Runas', 'guarda-roupa': 'Guarda-roupa', materiais: 'Materiais',
   'infante celestial': 'Infante Celestial', pangu: 'PanGu', codice: 'Códice (coleção)', recompra: 'Recompra',
   transmutacao: 'Transmutação', equipado: 'equipado', inventario: 'mochila', banco: 'banco', cartas: 'cartas',
@@ -702,7 +758,7 @@ function desenharDetalhes() {
       <div class="origem-linha">
         <img src="${ICONE(x.item_id)}" alt="" ${SEM_IMG}>
         <div><b>${x.qtd > 1 ? inteiro(x.qtd) + '× ' : ''}${esc(x.nome)}${x.refino_max ? ' +' + x.refino_max : ''}</b>
-          <small>${x.refino_min ? `faixa refino ≥ +${x.refino_min} · ` : ''}${x.secoes.map(s => NOMES_SECAO[s] || s).join(', ')}</small></div>
+          <small>${x.grupo_id != null ? 'grupo · ' : ''}${x.refino_min ? `faixa refino ≥ +${x.refino_min} · ` : ''}${x.secoes.map(s => NOMES_SECAO[s] || s).join(', ')}</small></div>
         <div class="num"><b>${ouro(x.kk)}</b><small class="dim">${reais(kkPara(x.kk, bi))}</small></div>
       </div>`).join('')
     : `<div class="dim">${a.lida ? 'Nenhum item desta conta está na sua tabela de valores. Clique num item acima para dar um valor a ele.' : 'O valor aparece quando os itens forem lidos.'}</div>`;
@@ -775,6 +831,7 @@ function conteudoSubAba(d) {
       <div class="pedra"><button class="slot ${linhaValorPara(g.it, indice) ? 'valorizado' : ''}" data-i="${g.i}"><img src="${ICONE(g.it.item_id)}" alt="" ${SEM_IMG}></button>
         <div><b>${inteiro(g.qtd)}× ${esc(g.it.nome)}</b><small>${esc(g.it.efeito)}</small></div></div>`).join('')}</div>`;
   }
+  if (S.subAba === 'runas') return conteudoRunas(d, itens, indice);
   if (S.subAba === 'outros') {
     const porSecao = new Map();
     for (const par of itens) {
@@ -785,6 +842,35 @@ function conteudoSubAba(d) {
       <div class="slots">${lista.map(([it, i]) => slotHtml(it, i, indice)).join('')}</div>`).join('');
   }
   return `<div class="slots">${itens.map(([it, i]) => slotHtml(it, i, indice)).join('')}</div>`;
+}
+
+/** Aba "Runas": as incorporadas nas habilidades, na ordem do site, e as guardadas, juntando as iguais.
+ *  A habilidade vem no efeito ("Equipada em ΨDevorar"); contas lidas antes de o programa guardar isso aparecem todas como guardadas. */
+const nivelDaRuna = it => Number(/(?:Nv\.|Nível)\s*(\d+)/i.exec(it.nome)?.[1] || 0);
+const runaNegociavel = (d, it) => (d.tooltips[it.tooltip] || []).some(l => l.some(s => Array.isArray(s) && /negociável \(solto\)/i.test(s[0])));
+function conteudoRunas(d, itens, indice) {
+  const linha = (it, i, qtd, detalhe) => {
+    const solta = runaNegociavel(d, it);
+    return `<div class="pedra"><button class="slot ${linhaValorPara(it, indice) ? 'valorizado' : ''}" data-i="${i}"><img src="${ICONE(it.item_id)}" alt="" ${SEM_IMG}></button>
+      <div><b>${qtd > 1 ? inteiro(qtd) + '× ' : ''}${esc(it.nome)}</b>${detalhe ? `<small>${esc(detalhe)}</small>` : ''}</div>
+      ${solta ? '<span class="selo-runa" title="Item negociável (solto): pode ser vendido">negociável</span>' : ''}</div>`;
+  };
+  const equipadas = itens.filter(([it]) => it.efeito);
+  const guardadas = new Map();
+  for (const [it, i] of itens.filter(([x]) => !x.efeito)) {
+    const k = `${it.item_id}|${runaNegociavel(d, it)}`;
+    if (!guardadas.has(k)) guardadas.set(k, { it, i, qtd: 0 });
+    guardadas.get(k).qtd += it.qtd;
+  }
+  const soltas = itens.filter(([it]) => runaNegociavel(d, it)).reduce((s, [it]) => s + it.qtd, 0);
+  const total = itens.reduce((s, [it]) => s + it.qtd, 0);
+  return `<div class="soma-busca resumo-runas">${inteiro(total)} ${total === 1 ? 'runa' : 'runas'} · <b>${inteiro(equipadas.length)}</b> nas habilidades`
+    + ` · <b>${inteiro(total - equipadas.length)}</b> guardadas${soltas ? ` · <b>${inteiro(soltas)}</b> negociáveis` : ''}</div>`
+    + (equipadas.length ? `<div class="grupo-secao">Nas habilidades</div><div class="pedras">${equipadas
+      .map(([it, i]) => linha(it, i, it.qtd, it.efeito.replace(/^Equipada em\s*/i, ''))).join('')}</div>` : '')
+    + (guardadas.size ? `<div class="grupo-secao">Guardadas</div><div class="pedras">${[...guardadas.values()]
+      .sort((a, b) => nivelDaRuna(b.it) - nivelDaRuna(a.it) || a.it.nome.localeCompare(b.it.nome))
+      .map(g => linha(g.it, g.i, g.qtd, '')).join('')}</div>` : '');
 }
 
 /** Aba "Pesquisados": quanto a conta tem de cada item da busca, onde estão e os próprios itens.
@@ -872,7 +958,7 @@ function mostrarTooltip(it, el) {
   }
   if (it.qtd > 1) html += `<div class="linha" style="color:#8b93a7">Quantidade: ${inteiro(it.qtd)}</div>`;
   const v = linhaValorPara(it);
-  html += v ? `<div class="linha" style="color:#f5cd6f;margin-top:4px">Na sua tabela: ${ouro(v.valor_kk)} por unidade</div>`
+  html += v ? `<div class="linha" style="color:#f5cd6f;margin-top:4px">${v.grupo_id != null ? `Pelo grupo ${esc(v.nome)}` : 'Na sua tabela'}: ${ouro(v.valor_kk)} por unidade</div>`
     : '<div class="linha" style="color:#768097;margin-top:4px">Clique para dar um valor a este item</div>';
   tip.innerHTML = html;
   tip.hidden = false;
@@ -891,7 +977,10 @@ function abrirBalaoValor(it, el) {
   esconderTooltip();
   const balao = $('#balao');
   const indice = valoresPorItem();
-  const existente = linhaValorPara(it, indice);
+  const vale = linhaValorPara(it, indice);
+  // vale pelo grupo: o balão cadastra um valor só para este item (o do grupo se muda na tabela de valores)
+  const peloGrupo = vale?.grupo_id != null ? vale : null;
+  const existente = peloGrupo ? null : vale;
   const refinavel = it.refino > 0;
   const bi = S.estado?.rs_por_bi ?? 500;
   const nesta = S.conta.itens.filter(x => x.item_id === it.item_id && x.secao !== 'codice' && x.secao !== 'recompra'
@@ -902,7 +991,9 @@ function abrirBalaoValor(it, el) {
     valor: '',
   };
   if (existente) estado.valor = String(estado.unidade === 'bi' ? existente.valor_kk / 1000 : existente.valor_kk).replace('.', ',');
-  const anterior = S.conta.detalhes.find(x => existente && x.valor_id === existente.id);
+  // o lucro novo sai sem o que a linha de agora soma; a do grupo também vale para outros itens da conta, por isso só a parte deste
+  const anterior = existente ? S.conta.detalhes.find(x => x.valor_id === existente.id)
+    : peloGrupo ? { kk: peloGrupo.valor_kk * nesta } : null;
   const desenhar = () => {
     const n = numeroDe(estado.valor);
     const kk = n == null ? null : estado.unidade === 'bi' ? n * 1000 : n;
@@ -917,6 +1008,7 @@ function abrirBalaoValor(it, el) {
     balao.innerHTML = `
       <div class="balao-topo"><img class="icone-item" src="${ICONE(it.item_id)}" alt="" ${SEM_IMG}>
         <div><b>${esc(it.nome)}${it.refino ? ' +' + it.refino : ''}</b><small>${it.efeito ? esc(it.efeito) + ' · ' : ''}${inteiro(nesta)} ${nesta === 1 ? 'unidade' : 'unidades'} nesta conta</small></div></div>
+      ${peloGrupo ? `<div class="conversao">Hoje vale <b>${ouro(peloGrupo.valor_kk)}</b> pelo grupo <b>${esc(peloGrupo.nome)}</b>${peloGrupo.refino_min ? ` (refino ≥ +${peloGrupo.refino_min})` : ''}. Salvar aqui dá um valor só para este item, que passa a valer no lugar do grupo.</div>` : ''}
       ${refinavel ? `<div class="campo"><label>Condição</label><div class="seg" data-seg="refino">
           <button data-v="0" class="${estado.refino_min === 0 ? 'on' : ''}">qualquer refino</button>
           <button data-v="${it.refino}" class="${estado.refino_min === it.refino ? 'on' : ''}">refino ≥ +${it.refino}</button></div></div>` : ''}
@@ -1028,11 +1120,12 @@ function iniciarDivisores() {
 }
 
 // ================================================================ tabela de valores
-const GRUPOS = [['livros', 'Livros'], ['armas', 'Armas'], ['pedra', 'Pedras engastadas'], ['cartas', 'Cartas'],
-  ['equip', 'Equipamentos'], ['item', 'Materiais e outros']];
+const GRUPOS = [['grupo', 'Grupos de itens'], ['livros', 'Livros'], ['armas', 'Armas'], ['pedra', 'Pedras engastadas'],
+  ['cartas', 'Cartas'], ['equip', 'Equipamentos'], ['item', 'Materiais e outros']];
 const EQUIPAMENTOS = new Set(['elmos', 'peitorais', 'calcas', 'botas', 'braceletes', 'colares', 'capas', 'aneis',
   'ornamentos', 'astrolabios', 'conduites', 'equipamento']);
-const grupoDe = t => (['livros', 'armas', 'pedra', 'cartas'].includes(t) ? t : EQUIPAMENTOS.has(t) ? 'equip' : 'item');
+const grupoDe = t => (['grupo', 'livros', 'armas', 'pedra', 'cartas'].includes(t) ? t : EQUIPAMENTOS.has(t) ? 'equip' : 'item');
+const ICONE_GRUPO = '<span class="icone-grupo"><svg class="ic"><use href="#i-list"/></svg></span>';
 
 async function carregarValores(desenhar = true) {
   try {
@@ -1072,10 +1165,12 @@ function linhaValorHtml(v) {
   const editando = S.form?.id === v.id ? 'editando' : '';
   const confirmando = S.confirmando === v.id;
   const laranja = ['livros', 'armas'].includes(v.tipo) ? 'ouro' : '';
+  const sobre = v.grupo_id != null ? (v.grupo_apagado ? 'Grupo apagado: não vale para nenhum item' : descricaoItem(v))
+    : `${TIPOS[v.tipo] || 'Item'}${v.efeito ? ' · ' + v.efeito : ''}${v.visto ? '' : ' · ainda não visto em contas'}`;
   return `<div class="linha-valor ${editando} ${confirmando ? 'confirmando' : ''}" data-id="${v.id}">
-    <img class="icone-item ${laranja}" src="${v.item_id ? ICONE(v.item_id) : ''}" alt="" ${SEM_IMG}>
+    ${v.grupo_id != null ? ICONE_GRUPO : `<img class="icone-item ${laranja}" src="${v.item_id ? ICONE(v.item_id) : ''}" alt="" ${SEM_IMG}>`}
     <div class="nome-valor"><b style="${laranja ? 'color:var(--laranja)' : ''}">${esc(v.nome)}</b>
-      <small>${esc(TIPOS[v.tipo] || 'Item')}${v.efeito ? ' · ' + esc(v.efeito) : ''}${v.visto ? '' : ' · ainda não visto em contas'}</small></div>
+      <small>${esc(sobre)}</small></div>
     <div>${v.refino_min ? `<span class="pill ouro">refino ≥ +${v.refino_min}</span>` : '<span class="dim">qualquer</span>'}</div>
     <div class="valor-unit"><b>${ouro(v.valor_kk)}</b><small>≈ ${reais(v.valor_rs)}</small></div>
     ${confirmando ? `<div class="confirmacao"><span class="dim" style="align-self:center">Apagar?</span><button class="btn pequeno perigo" data-acao="sim">Sim</button><button class="btn pequeno fantasma" data-acao="nao">Não</button></div>`
@@ -1094,7 +1189,7 @@ function desenharFormValor() {
   const it = f.item;
   const n = numeroDe(f.valor);
   const kk = n == null ? null : f.unidade === 'bi' ? n * 1000 : n;
-  const refinavel = it && (it.no_catalogo || ['livros', 'armas'].includes(it.tipo) || EQUIPAMENTOS.has(it.tipo));
+  const refinavel = it && (it.grupo_id != null || it.no_catalogo || ['livros', 'armas'].includes(it.tipo) || EQUIPAMENTOS.has(it.tipo));
   const faixas = [0, 8, 10, 11, 12];
   if (f.refino_min && !faixas.includes(f.refino_min)) faixas.push(f.refino_min);
   let corpo;
@@ -1102,24 +1197,31 @@ function desenharFormValor() {
     corpo = `<div class="seletor-item" id="form-seletor">
         <div class="entrada"><svg class="ic"><use href="#i-search"/></svg><input placeholder="Digite o nome do item…" autocomplete="off"></div>
         <div class="sugestoes"></div></div>
-      <div class="conversao">Aparecem os equipamentos do site e tudo o que já foi visto nas contas: materiais, pedras e cartas.</div>`;
+      <div class="conversao">Aparecem os grupos de itens, os equipamentos do site e tudo o que já foi visto nas contas: materiais, pedras e cartas.</div>
+      <div class="form-grupos">
+        <div><b>Um valor para vários itens</b><small>Junte itens num grupo, como as armas UP4, e dê um valor só, que vale para cada um deles.</small></div>
+        <div class="form-grupos-acoes"><button class="btn fantasma pequeno" data-acao="novo-grupo" title="Cria um grupo com o nome digitado acima (ou “Novo grupo”). Adicione os itens e feche a janela: o grupo fica escolhido aqui para dar o valor."><svg class="ic"><use href="#i-plus"/></svg>Criar grupo de itens</button>
+          <button class="link" data-acao="grupos"><svg class="ic"><use href="#i-list"/></svg>ver grupos${S.grupos.length ? ` (${inteiro(S.grupos.length)})` : ''}</button></div>
+      </div>`;
   } else {
+    const grupo = it.grupo_id != null;
     const media = it.contas ? Math.round((it.unidades || it.contas) / it.contas) : null;
-    corpo = `<div class="escolhido"><img class="icone-item" src="${it.item_id ? ICONE(it.item_id) : ''}" alt="" ${SEM_IMG}>
-        <div><b>${esc(it.nome)}</b><small>${esc(descricaoItem(it))}</small></div>
+    corpo = `<div class="escolhido">${grupo ? ICONE_GRUPO : `<img class="icone-item" src="${it.item_id ? ICONE(it.item_id) : ''}" alt="" ${SEM_IMG}>`}
+        <div><b>${esc(it.nome)}</b><small>${esc(descricaoItem(it))}${grupo ? ' · <button class="link fino" data-acao="grupos">ver itens</button>' : ''}</small></div>
         ${f.id ? '' : '<button class="link" data-acao="trocar">trocar</button>'}</div>
       <div class="campo"><label>Condição</label>
         <div class="seg" data-seg="refino">${faixas.sort((a, b) => a - b).map(r => `<button data-v="${r}" class="${f.refino_min === r ? 'on' : ''}" ${!refinavel && r ? 'disabled' : ''}>${r ? '≥ +' + r : 'Qualquer'}</button>`).join('')}</div>
-        <small class="conversao">${refinavel ? 'Vale para o item com esse refino ou mais. Cadastre faixas diferentes para refinos diferentes.' : 'Este item não tem refino.'}</small></div>
+        <small class="conversao">${grupo ? 'Vale para cada item do grupo com esse refino ou mais. Um item com valor próprio na tabela usa o dele.'
+          : refinavel ? 'Vale para o item com esse refino ou mais. Cadastre faixas diferentes para refinos diferentes.' : 'Este item não tem refino.'}</small></div>
       <div class="campo"><label>Valor por unidade</label>
         <div class="valor-entrada"><input class="caixa" id="form-valor-n" inputmode="decimal" value="${esc(f.valor)}" placeholder="0">
           <div class="seg" data-seg="unidade"><button data-v="kk" class="${f.unidade === 'kk' ? 'on' : ''}">kk</button><button data-v="bi" class="${f.unidade === 'bi' ? 'on' : ''}">bi</button></div></div>
         <small class="conversao">${kk ? `= ${ouro(kk)} ≈ <b>${reais(kkPara(kk, bi))}</b> por unidade` : '1 bi = 1.000 kk'}</small></div>
-      <div class="impacto">
+      ${it.contas == null ? '' : `<div class="impacto">
         <div><span>Contas que têm</span><b>${inteiro(it.contas || 0)}</b></div>
         <div><span>Média por conta</span><b>${media != null ? inteiro(media) + ' un.' : '—'}</b></div>
         <div><span>Soma média</span><b>${kk && media != null ? '≈ ' + reais(kkPara(kk * media, bi)) : '—'}</b></div>
-      </div>
+      </div>`}
       <div class="erro-form">${esc(f.erro)}</div>
       <div class="form-acoes"><button class="btn fantasma" data-acao="cancelar">Cancelar</button>
         <button class="btn primario" data-acao="salvar"><svg class="ic"><use href="#i-${f.id ? 'edit' : 'plus'}"/></svg>${f.id ? 'Salvar alteração' : 'Adicionar à tabela'}</button></div>`;
@@ -1131,7 +1233,7 @@ function desenharFormValor() {
       S.form = { ...novoForm(), item: escolhido, unidade: ['livros', 'armas'].includes(escolhido.tipo) || EQUIPAMENTOS.has(escolhido.tipo) ? 'bi' : 'kk' };
       desenharFormValor();
       $('#form-valor-n')?.focus();
-    }, null, { titulo: q => `Cadastrar “${q}” pelo nome`, nota: 'Ainda não visto em nenhuma conta; passa a valer quando aparecer.' });
+    }, null, { titulo: q => `Cadastrar “${q}” pelo nome`, nota: 'Ainda não visto em nenhuma conta; passa a valer quando aparecer.' }, 'valor');
     if (S.aba === 'valores' && document.activeElement === document.body) sel.focar();
   }
 }
@@ -1148,7 +1250,7 @@ function iniciarValores() {
     if (!linha || !acao) return;
     const v = S.valores.find(x => x.id === Number(linha.dataset.id));
     if (acao === 'editar') {
-      S.form = { id: v.id, item: { item_id: v.item_id, nome: v.nome, tipo: v.tipo, efeito: v.efeito, contas: v.contas, unidades: v.unidades, no_catalogo: v.no_catalogo },
+      S.form = { id: v.id, item: { item_id: v.item_id, grupo_id: v.grupo_id, itens: v.itens, nome: v.nome, tipo: v.tipo, efeito: v.efeito, contas: v.contas, unidades: v.unidades, no_catalogo: v.no_catalogo },
         refino_min: v.refino_min, unidade: v.valor_kk >= 1000 ? 'bi' : 'kk', valor: '', erro: '' };
       S.form.valor = String(S.form.unidade === 'bi' ? v.valor_kk / 1000 : v.valor_kk).replace('.', ',');
       desenharValores();
@@ -1192,7 +1294,13 @@ function iniciarValores() {
       return;
     }
     const acao = e.target.closest('[data-acao]')?.dataset.acao;
-    if (acao === 'trocar' || acao === 'cancelar') {
+    if (acao === 'grupos') {
+      abrirGrupos();
+    } else if (acao === 'novo-grupo') {
+      const nome = $('#form-seletor input')?.value.trim() || '';
+      abrirGrupos();
+      S.grupoParaValor = await novoGrupo(nome);
+    } else if (acao === 'trocar' || acao === 'cancelar') {
       S.form = novoForm();
       desenharValores();
       desenharFormValor();
@@ -1200,7 +1308,7 @@ function iniciarValores() {
       const f = S.form;
       const n = numeroDe(f.valor);
       if (n == null || n <= 0) { f.erro = 'Informe um valor maior que zero.'; desenharFormValor(); return; }
-      const corpo = { nome: f.item.nome, item_id: f.item.item_id, refino_min: f.refino_min, valor_kk: f.unidade === 'bi' ? n * 1000 : n };
+      const corpo = { nome: f.item.nome, item_id: f.item.item_id, grupo_id: f.item.grupo_id, refino_min: f.refino_min, valor_kk: f.unidade === 'bi' ? n * 1000 : n };
       try {
         if (f.id) await api('PUT', `/api/valores/${f.id}`, corpo);
         else await api('POST', '/api/valores', corpo);
@@ -1438,24 +1546,44 @@ async function salvarGrupo(g, mudancas, focar = null) {
   if (focar) desenharGrupos({ id: g.id, campo: focar });
 }
 
+function abrirGrupos() {
+  S.confirmando = null;
+  S.grupoParaValor = null;
+  $('#modal-grupos').hidden = false;
+  desenharGrupos();
+}
+
+/** Cria um grupo vazio e o mostra na janela: com o nome digitado, o cursor vai para "adicionar item"; sem ele,
+ *  para o nome ("Novo grupo", já selecionado para trocar). Devolve o id, ou null se não deu. */
+async function novoGrupo(nomeBase = '') {
+  let nome = nomeBase || 'Novo grupo';
+  for (let n = 2; S.grupos.some(g => g.nome === nome); n++) nome = `${nomeBase || 'Novo grupo'} ${n}`;
+  try {
+    const { id } = await api('POST', '/api/grupos', { nome, itens: [] });
+    await carregarGrupos();
+    desenharGrupos({ id, campo: nomeBase ? 'item' : 'nome' });
+    if (!nomeBase) $(`#lista-grupos .grupo[data-id="${id}"] input[data-campo="nome"]`)?.select();
+    return id;
+  } catch (err) { avisar(err.message, true); return null; }
+}
+
+/** Grupo criado pela Tabela de valores: ao fechar a janela, ele já fica escolhido no "Adicionar item", para dar o valor. */
+function grupoProntoParaValor() {
+  const g = S.grupos.find(x => x.id === S.grupoParaValor);
+  S.grupoParaValor = null;
+  if (!g || !g.itens.length || S.aba !== 'valores' || S.form?.item) return;
+  S.form = { ...novoForm(), item: { grupo_id: g.id, nome: g.nome, itens: g.itens } };
+  desenharFormValor();
+  $('#form-valor-n')?.focus();
+}
+
 function iniciarGrupos() {
   const modal = $('#modal-grupos');
   const lista = $('#lista-grupos');
-  $('#abrir-grupos').addEventListener('click', () => {
-    S.confirmando = null;
-    modal.hidden = false;
-    desenharGrupos();
-  });
-  $('#novo-grupo').addEventListener('click', async () => {
-    let nome = 'Novo grupo';
-    for (let n = 2; S.grupos.some(g => g.nome === nome); n++) nome = `Novo grupo ${n}`;
-    try {
-      const { id } = await api('POST', '/api/grupos', { nome, itens: [] });
-      await carregarGrupos();
-      desenharGrupos({ id, campo: 'nome' });
-      $(`.grupo[data-id="${id}"] input[data-campo="nome"]`, lista)?.select();
-    } catch (err) { avisar(err.message, true); }
-  });
+  $('#abrir-grupos').addEventListener('click', abrirGrupos);
+  $('#novo-grupo').addEventListener('click', () => novoGrupo());
+  new MutationObserver(() => { if (modal.hidden && S.grupoParaValor) grupoProntoParaValor(); })
+    .observe(modal, { attributes: true, attributeFilter: ['hidden'] });
   lista.addEventListener('change', e => {
     if (e.target.dataset.campo !== 'nome') return;
     const g = S.grupos.find(x => x.id === Number(e.target.closest('.grupo').dataset.id));

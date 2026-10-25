@@ -284,6 +284,32 @@ class Grupos(BaseBanco):
         self.banco.apagar_grupo(self.gid)
         self.assertEqual(self.ids({'algum': [{'grupo_id': self.gid, 'nome': 'Armas do rank'}]}), [])
 
+    def test_valor_do_grupo(self):
+        self.banco.salvar_valor({'grupo_id': self.gid, 'valor_kk': 100})
+        self.banco.salvar_valor({'grupo_id': self.gid, 'refino_min': 12, 'valor_kk': 500})
+        self.assertEqual(self.banco.anuncio(231216)['valor_kk'], 500)  # o Cosmos +12, pela faixa de +12
+        so_45520 = sum(it.qtd for it in self.itens[45520] if it.item_id == self.so_45520 and it.secao not in ('codice', 'recompra'))
+        self.assertEqual(self.banco.anuncio(45520)['valor_kk'], 100 * so_45520)
+        linha = next(v for v in self.banco.valores() if v['refino_min'] == 0)
+        self.assertEqual((linha['nome'], linha['tipo'], linha['itens'], linha['contas']),
+                         ('Armas do rank', 'grupo', [COSMOS, self.so_45520], 2))
+        with self.assertRaises(ValueError):
+            self.banco.salvar_valor({'grupo_id': self.gid, 'valor_kk': 50})  # faixa repetida
+        self.assertEqual(self.banco.ids_valorizados(), {COSMOS, self.so_45520})
+        # o valor do próprio item vem antes do grupo
+        self.banco.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'valor_kk': 3000})
+        self.assertEqual(self.banco.anuncio(231216)['valor_kk'], 3000)
+        detalhe = self.banco.conta(45520)['detalhes'][0]
+        self.assertEqual((detalhe['nome'], detalhe['grupo_id']), ('Armas do rank', self.gid))
+        # renomear o grupo muda o nome do valor; apagar o grupo apaga o valor
+        self.banco.salvar_grupo({'nome': 'Armas UP4', 'itens': [{'item_id': self.so_45520}]}, self.gid)
+        self.assertEqual({v['nome'] for v in self.banco.valores() if v['grupo_id']}, {'Armas UP4'})
+        self.banco.apagar_grupo(self.gid)
+        self.assertEqual([v['nome'] for v in self.banco.valores()], ['Cosmos'])
+        self.assertEqual(self.banco.anuncio(45520)['valor_kk'], 0)
+        with self.assertRaises(ValueError):
+            self.banco.salvar_valor({'grupo_id': self.gid, 'valor_kk': 100})  # grupo que não existe
+
     def test_itens_do_grupo_sao_lidos_antes(self):
         self.banco.salvar_busca({'nome': 'Rank', 'filtros': {'algum': [{'grupo_id': self.gid, 'nome': 'Armas do rank'}]}})
         self.assertEqual(self.banco.ids_valorizados(), {COSMOS, self.so_45520})

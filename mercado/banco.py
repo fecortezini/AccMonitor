@@ -57,7 +57,8 @@ CREATE INDEX IF NOT EXISTS conhecidos_nome ON conhecidos(nome_norm);
 CREATE TABLE IF NOT EXISTS valores (
     id INTEGER PRIMARY KEY AUTOINCREMENT, item_id INTEGER, nome TEXT NOT NULL, nome_norm TEXT NOT NULL,
     refino_min INTEGER NOT NULL DEFAULT 0, valor_kk REAL NOT NULL,
-    criado_em TEXT NOT NULL, atualizado_em TEXT NOT NULL
+    criado_em TEXT NOT NULL, atualizado_em TEXT NOT NULL,
+    grupo_id INTEGER  -- linha de um grupo de itens: vale para cada item dele (nome = o do grupo)
 );
 
 CREATE TABLE IF NOT EXISTS buscas (
@@ -94,7 +95,9 @@ LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'leituras_simultaneas'
 SO_NESTE_PC = frozenset({'largura_filtros', 'largura_detalhes', 'detalhes_recolhidos',
                          'telegram_token', 'telegram_chat', 'discord_webhook'})
 COMPARTILHADAS = tuple(k for k in PADROES if k not in SO_NESTE_PC)
-FORMATO_DADOS = 1  # versão do meus-dados.json
+# Versão do meus-dados.json. A 2 tem valores de grupo; o arquivo só é gravado como 2 quando tem algum, para
+# um PC com o programa antigo recusar o arquivo (e pedir para atualizar) em vez de perder esses valores.
+FORMATO_DADOS = 2
 _GRAVAR_CONFIG = ('INSERT INTO config(chave, valor) VALUES (?, ?) '
                   'ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
 
@@ -148,6 +151,42 @@ def _condicoes(lista):
     """Condições de item de uma lista dos filtros, só as que têm o item, o grupo ou um texto do nome."""
     return [_condicao(c) for c in (lista or [])
             if isinstance(c, dict) and (c.get('item_id') or c.get('grupo_id') or norm(c.get('nome')))]
+
+
+def _filtros_do_anuncio(f, p):
+    """Condições SQL (tabela a) dos filtros que não dependem dos itens: nome, classe, preço, nível, céu, novas."""
+    conds = ['a.ativo = 1']
+    if f.get('ids') is not None:  # usado pelo coletor para conferir só as contas que acabou de ler
+        conds.append(f'a.id IN ({",".join(str(int(i)) for i in f["ids"]) or "NULL"})')
+    if nome := norm(f.get('nome')):
+        conds.append('a.nome_norm LIKE :nome')
+        p['nome'] = f'%{nome}%'
+    classes = [str(c) for c in (f.get('classes') or []) if c]
+    if classes:
+        conds.append(f'a.classe IN ({",".join(f":c{i}" for i in range(len(classes)))})')
+        p.update({f'c{i}': c for i, c in enumerate(classes)})
+    for chave, op in (('preco_min', '>='), ('preco_max', '<=')):
+        if (v := _numero(f.get(chave))) is not None:
+            conds.append(f'a.preco {op} :{chave}')
+            p[chave] = v
+    if (v := _numero(f.get('nivel_min'))) is not None:
+        conds.append('a.nivel >= :nivel_min')
+        p['nivel_min'] = v
+    if ceu := norm(f.get('ceu')):
+        conds.append('a.ceu_norm LIKE :ceu')
+        p['ceu'] = f'%{ceu}%'
+    if f.get('so_novas'):
+        conds.append('a.nova = 1 AND a.primeiro_visto >= :h24')
+        p['h24'] = _ha_24h()
+    return conds
+
+
+def _ids_sql(ids):
+    return ','.join(str(int(i)) for i in ids) or 'NULL'
+
+
+# Conta que falta ler: sem itens lidos, ou lidos com outro preço
+_PARA_LER = '(a.itens_lidos_em IS NULL OR a.preco_lido IS NULL OR a.preco_lido != a.preco)'
 
 
 def _lidas_ou_do_site(sub, site):
@@ -239,10 +278,12 @@ def _normalizar(dados):
     for v in _dicts(dados.get('valores')):
         nome, kk = str(v.get('nome') or '').strip(), _numero(v.get('valor_kk'))
         if nome and kk is not None and kk > 0:
-            valores.append({'id': _inteiro(v.get('id')), 'item_id': _inteiro(v.get('item_id')), 'nome': nome,
-                            'refino_min': min(max(int(_numero(v.get('refino_min')) or 0), 0), 20), 'valor_kk': kk,
-                            'criado_em': str(v.get('criado_em') or ''),
-                            'atualizado_em': str(v.get('atualizado_em') or '')})
+            grupo_id = _inteiro(v.get('grupo_id'))
+            valores.append({'id': _inteiro(v.get('id')), 'item_id': None if grupo_id else _inteiro(v.get('item_id')),
+                            'nome': nome, 'refino_min': min(max(int(_numero(v.get('refino_min')) or 0), 0), 20),
+                            'valor_kk': kk, 'criado_em': str(v.get('criado_em') or ''),
+                            'atualizado_em': str(v.get('atualizado_em') or ''),
+                            **({'grupo_id': grupo_id} if grupo_id else {})})  # só nos de grupo: o arquivo antigo não muda
     buscas = []
     for b in _dicts(dados.get('buscas')):
         nome, filtros = str(b.get('nome') or '').strip(), b.get('filtros')
@@ -293,7 +334,8 @@ def _formatar(dados):
     def lista(linhas):
         return '[\n' + ',\n'.join('    ' + json.dumps(l, ensure_ascii=False) for l in linhas) + '\n  ]' if linhas else '[]'
     cfg = ',\n'.join(f'    {json.dumps(k)}: {json.dumps(v)}' for k, v in dados['configuracoes'].items())
-    return (f'{{\n  "formato": {FORMATO_DADOS},\n  "configuracoes": {{\n{cfg}\n  }},\n'
+    formato = 2 if any(v.get('grupo_id') for v in dados['valores']) else 1  # ver FORMATO_DADOS
+    return (f'{{\n  "formato": {formato},\n  "configuracoes": {{\n{cfg}\n  }},\n'
             f'  "valores": {lista(dados["valores"])},\n  "buscas": {lista(dados["buscas"])},\n'
             f'  "grupos": {lista(dados["grupos"])}\n}}\n')
 
@@ -316,6 +358,8 @@ class Banco:
                                  ('lance_novo_em', 'TEXT')):
                 if coluna not in colunas:
                     self.con.execute(f'ALTER TABLE anuncios ADD COLUMN {coluna} {tipo}')
+            if 'grupo_id' not in {r[1] for r in self.con.execute('PRAGMA table_info(valores)')}:
+                self.con.execute('ALTER TABLE valores ADD COLUMN grupo_id INTEGER')
         self.sincronizar()
 
     @property
@@ -443,7 +487,7 @@ class Banco:
         return _normalizar({
             'configuracoes': {k: cfg[k] for k in COMPARTILHADAS},
             'valores': [dict(r) for r in self.con.execute(
-                'SELECT id, item_id, nome, refino_min, valor_kk, criado_em, atualizado_em FROM valores')],
+                'SELECT id, item_id, nome, refino_min, valor_kk, criado_em, atualizado_em, grupo_id FROM valores')],
             'buscas': [{**dict(r), 'filtros': json.loads(r['filtros'])} for r in self.con.execute(
                 'SELECT id, nome, avisar, lucro_min_rs, lucro_min_pct, criado_em, atualizado_em, filtros FROM buscas')],
             'grupos': self.grupos(),
@@ -454,10 +498,10 @@ class Banco:
             antes = {r['id']: r['criado_em'] for r in con.execute('SELECT id, criado_em FROM buscas')}
             con.execute('DELETE FROM valores')
             con.executemany(
-                'INSERT INTO valores (id, item_id, nome, nome_norm, refino_min, valor_kk, criado_em, atualizado_em) '
-                'VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO valores (id, item_id, nome, nome_norm, refino_min, valor_kk, criado_em, atualizado_em, '
+                'grupo_id) VALUES (?,?,?,?,?,?,?,?,?)',
                 [(v['id'], v['item_id'], v['nome'], norm(v['nome']), v['refino_min'], v['valor_kk'], v['criado_em'],
-                  v['atualizado_em']) for v in dados['valores']])
+                  v['atualizado_em'], v.get('grupo_id')) for v in dados['valores']])
             con.execute('DELETE FROM buscas')
             con.executemany(
                 'INSERT INTO buscas (id, nome, filtros, avisar, lucro_min_rs, lucro_min_pct, criado_em, atualizado_em) '
@@ -586,8 +630,32 @@ class Banco:
     def contas_para_ler(self):
         """Anúncios ativos sem itens lidos (ou lidos com outro preço), dos mais baratos aos mais caros."""
         return [dict(r) for r in self.con.execute(
-            'SELECT id, preco FROM anuncios WHERE ativo = 1 AND '
-            '(itens_lidos_em IS NULL OR preco_lido IS NULL OR preco_lido != preco) ORDER BY preco, id')]
+            f'SELECT id, preco FROM anuncios a WHERE ativo = 1 AND {_PARA_LER} ORDER BY preco, id')]
+
+    def para_ler_na_busca(self, filtros, ids_do_site=None):
+        """Contas que faltam ler e podem bater com os filtros, das mais baratas às mais caras.
+
+        Os filtros do anúncio (classe, preço, nível...) já se sabem. Os de item só lendo a conta, mas a
+        busca do site (ids_do_site, como em buscar) responde pelos equipamentos do catálogo: numa condição
+        dessas, só contam as contas que ela aponta. Sem filtro nenhum, são todas as que faltam ler.
+        """
+        f = filtros or {}
+        p = {}
+        conds = _filtros_do_anuncio(f, p) + [_PARA_LER]
+        for cond in self._resolver_grupos(_condicoes(f.get('itens'))):
+            if (ids := ids_do_site(cond) if ids_do_site else None) is not None:
+                conds.append(f'a.id IN ({_ids_sql(ids)})')
+        algum = self._resolver_grupos(_condicoes(f.get('algum')))
+        site = set()
+        for cond in algum:  # vale a conta com qualquer um; se um deles o site não responde, pode ser qualquer conta
+            if (ids := ids_do_site(cond) if ids_do_site else None) is None:
+                break
+            site |= set(ids)
+        else:
+            if algum:
+                conds.append(f'a.id IN ({_ids_sql(site)})')
+        return [r[0] for r in self.con.execute(
+            f'SELECT a.id FROM anuncios a WHERE {" AND ".join(conds)} ORDER BY a.preco, a.id', p)]
 
     def contagem(self):
         r = self.con.execute(
@@ -617,7 +685,7 @@ class Banco:
                            it.refino, it.qtd, it.efeito, tid))
             if it.item_id is not None and it.item_id not in conhecidos:
                 tipo = 'pedra' if it.secao == 'engastada' else 'item'
-                conhecidos[it.item_id] = (it.item_id, it.nome, nome_norm, tipo, it.efeito)
+                conhecidos[it.item_id] = (it.item_id, it.nome, nome_norm, tipo, it.efeito if tipo == 'pedra' else '')
         with self._transacao() as con:
             con.execute('DELETE FROM itens WHERE anuncio_id = ?', (anuncio_id,))
             con.executemany('INSERT INTO itens (anuncio_id, ordem, secao, item_id, nome, nome_norm, refino, qtd, '
@@ -625,12 +693,13 @@ class Banco:
             con.executemany('INSERT OR IGNORE INTO tooltips (id, dados) VALUES (?, ?)', tooltips.items())
             con.executemany('INSERT OR IGNORE INTO conhecidos (item_id, nome, nome_norm, tipo, efeito) '
                             'VALUES (?,?,?,?,?)', conhecidos.values())
-            pendentes = {r['nome_norm'] for r in con.execute('SELECT nome_norm FROM valores WHERE item_id IS NULL')}
+            pendentes = {r['nome_norm'] for r in con.execute(
+                'SELECT nome_norm FROM valores WHERE item_id IS NULL AND grupo_id IS NULL')}
             vinculou = False
             for item_id, _, nome_norm, _, _ in conhecidos.values():
                 if nome_norm in pendentes:  # valor cadastrado só pelo nome ganha o item_id
-                    con.execute('UPDATE valores SET item_id = ? WHERE item_id IS NULL AND nome_norm = ?',
-                                (item_id, nome_norm))
+                    con.execute('UPDATE valores SET item_id = ? WHERE item_id IS NULL AND grupo_id IS NULL '
+                                'AND nome_norm = ?', (item_id, nome_norm))
                     pendentes.discard(nome_norm)
                     vinculou = True
             con.execute('UPDATE anuncios SET itens_lidos_em = ?, preco_lido = ? WHERE id = ?',
@@ -691,9 +760,12 @@ class Banco:
         return {r[0] for r in self.con.execute('SELECT item_id FROM conhecidos WHERE no_catalogo = 1')}
 
     def ids_valorizados(self):
-        """item_ids da tabela de valores e das condições das buscas salvas ("Tem item" e "Tem pelo menos um",
-        inclusive os itens dos grupos)."""
+        """item_ids da tabela de valores (inclusive os dos grupos com valor) e das condições das buscas salvas
+        ("Tem item" e "Tem pelo menos um", inclusive os itens dos grupos)."""
         ids = {r[0] for r in self.con.execute('SELECT DISTINCT item_id FROM valores WHERE item_id IS NOT NULL')}
+        grupos = self._itens_dos_grupos()
+        for r in self.con.execute('SELECT DISTINCT grupo_id FROM valores WHERE grupo_id IS NOT NULL'):
+            ids.update(grupos.get(r[0], ()))
         for b in self.buscas():
             for c in self._resolver_grupos(_condicoes(b['filtros'].get('itens')) + _condicoes(b['filtros'].get('algum'))):
                 ids.update(c.get('itens') or ())
@@ -769,7 +841,11 @@ class Banco:
 
     def _tabela(self):
         return valor.Tabela([dict(r) for r in self.con.execute(
-            'SELECT id, item_id, nome, nome_norm, refino_min, valor_kk FROM valores')])
+            'SELECT id, item_id, nome, nome_norm, refino_min, valor_kk, grupo_id FROM valores')], self._itens_dos_grupos())
+
+    def _itens_dos_grupos(self):
+        """{grupo_id: [item_ids]}"""
+        return {g['id']: [it['item_id'] for it in g['itens']] for g in self.grupos()}
 
     def recalcular(self, ids=None):
         """Recalcula valor e destaques das contas lidas (todas, ou só as de `ids`)."""
@@ -783,9 +859,9 @@ class Banco:
         por_conta = defaultdict(list)
         if tabela and alvo:
             conds, params = [], []
-            if tabela.por_id:
-                conds.append(f'item_id IN ({_marcadores(len(tabela.por_id))})')
-                params += list(tabela.por_id)
+            if item_ids := {*tabela.por_id, *tabela.por_grupo}:
+                conds.append(f'item_id IN ({_marcadores(len(item_ids))})')
+                params += list(item_ids)
             if tabela.por_nome:
                 conds.append(f'nome_norm IN ({_marcadores(len(tabela.por_nome))})')
                 params += list(tabela.por_nome)
@@ -834,29 +910,7 @@ class Banco:
         f = filtros or {}
         cfg = self.config()
         p = {'bi': cfg['rs_por_bi'], 'tcc': cfg['rs_por_tcc'], 'kk_bi': float(valor.KK_POR_BI)}
-        conds = ['a.ativo = 1']
-        if f.get('ids') is not None:  # usado pelo coletor para conferir só as contas que acabou de ler
-            conds.append(f'a.id IN ({",".join(str(int(i)) for i in f["ids"]) or "NULL"})')
-        if nome := norm(f.get('nome')):
-            conds.append('a.nome_norm LIKE :nome')
-            p['nome'] = f'%{nome}%'
-        classes = [str(c) for c in (f.get('classes') or []) if c]
-        if classes:
-            conds.append(f'a.classe IN ({",".join(f":c{i}" for i in range(len(classes)))})')
-            p.update({f'c{i}': c for i, c in enumerate(classes)})
-        for chave, op in (('preco_min', '>='), ('preco_max', '<=')):
-            if (v := _numero(f.get(chave))) is not None:
-                conds.append(f'a.preco {op} :{chave}')
-                p[chave] = v
-        if (v := _numero(f.get('nivel_min'))) is not None:
-            conds.append('a.nivel >= :nivel_min')
-            p['nivel_min'] = v
-        if ceu := norm(f.get('ceu')):
-            conds.append('a.ceu_norm LIKE :ceu')
-            p['ceu'] = f'%{ceu}%'
-        if f.get('so_novas'):
-            conds.append('a.nova = 1 AND a.primeiro_visto >= :h24')
-            p['h24'] = _ha_24h()
+        conds = _filtros_do_anuncio(f, p)
         base = list(conds)
 
         # "Tem item" (itens): a conta precisa atender a todas as condições
@@ -952,7 +1006,20 @@ class Banco:
             'SELECT v.*, c.tipo, c.efeito, c.no_catalogo FROM valores v LEFT JOIN conhecidos c ON c.item_id = v.item_id '
             'ORDER BY v.nome_norm, v.refino_min DESC').fetchall()
         saida = []
+        grupos = self._itens_dos_grupos()
         for r in linhas:
+            if r['grupo_id'] is not None:
+                itens = grupos.get(r['grupo_id'], [])
+                contas, unidades = self.con.execute(
+                    f'SELECT COUNT(DISTINCT i.anuncio_id), COALESCE(SUM(i.qtd), 0) FROM itens i '
+                    f'JOIN anuncios a ON a.id = i.anuncio_id WHERE a.ativo = 1 AND i.secao NOT IN ({_FORA}) '
+                    f'AND i.item_id IN ({_ids_sql(itens)}) AND i.refino >= ?', (r['refino_min'],)).fetchone()
+                saida.append({'id': r['id'], 'item_id': None, 'grupo_id': r['grupo_id'], 'itens': itens,
+                              'grupo_apagado': r['grupo_id'] not in grupos, 'nome': r['nome'],
+                              'refino_min': r['refino_min'], 'valor_kk': r['valor_kk'],
+                              'valor_rs': valor.kk_para_rs(r['valor_kk'], cfg['rs_por_bi']), 'tipo': 'grupo',
+                              'efeito': '', 'no_catalogo': False, 'visto': True, 'contas': contas, 'unidades': unidades})
+                continue
             if r['item_id'] is not None:
                 contas, unidades = self._contas_com([r['item_id']], r['refino_min']).get(r['item_id'], (0, 0))
             else:
@@ -961,13 +1028,20 @@ class Banco:
                     f'JOIN anuncios a ON a.id = i.anuncio_id '
                     f'WHERE a.ativo = 1 AND i.secao NOT IN ({_FORA}) AND i.nome_norm = ? AND i.refino >= ?',
                     (r['nome_norm'], r['refino_min'])).fetchone()
-            saida.append({'id': r['id'], 'item_id': r['item_id'], 'nome': r['nome'], 'refino_min': r['refino_min'],
+            saida.append({'id': r['id'], 'item_id': r['item_id'], 'grupo_id': None, 'nome': r['nome'], 'refino_min': r['refino_min'],
                           'valor_kk': r['valor_kk'], 'valor_rs': valor.kk_para_rs(r['valor_kk'], cfg['rs_por_bi']),
                           'tipo': r['tipo'] or 'item', 'efeito': r['efeito'] or '', 'no_catalogo': bool(r['no_catalogo']),
                           'visto': r['item_id'] is not None, 'contas': contas, 'unidades': unidades})
         return saida
 
     def salvar_valor(self, dados, valor_id=None):
+        """Linha da tabela de valores: de um item (item_id, ou só o nome) ou de um grupo de itens (grupo_id)."""
+        grupo_id = _inteiro(dados.get('grupo_id'))
+        if grupo_id is not None:
+            grupo = next((g for g in self.grupos() if g['id'] == grupo_id), None)
+            if grupo is None:
+                raise ValueError('Esse grupo não existe mais.')
+            dados = {**dados, 'nome': grupo['nome'], 'item_id': None}
         nome = str(dados.get('nome') or '').strip()
         if not nome:
             raise ValueError('Informe o item.')
@@ -980,30 +1054,33 @@ class Banco:
         item_id = dados.get('item_id')
         item_id = int(item_id) if str(item_id or '').isdigit() else None
         nome_norm = norm(nome)
-        if item_id is None:
+        if item_id is None and grupo_id is None:
             r = self.con.execute('SELECT item_id FROM conhecidos WHERE nome_norm = ? ORDER BY no_catalogo DESC LIMIT 1',
                                  (nome_norm,)).fetchone()
             item_id = r['item_id'] if r else None
         quando = agora()
         with self._mudando_dados(), self._transacao() as con:
-            if item_id is not None:
+            if grupo_id is not None:
+                dup = con.execute('SELECT id FROM valores WHERE grupo_id = ? AND refino_min = ? AND id IS NOT ?',
+                                  (grupo_id, refino_min, valor_id)).fetchone()
+            elif item_id is not None:
                 dup = con.execute('SELECT id FROM valores WHERE item_id = ? AND refino_min = ? AND id IS NOT ?',
                                   (item_id, refino_min, valor_id)).fetchone()
             else:
-                dup = con.execute('SELECT id FROM valores WHERE item_id IS NULL AND nome_norm = ? AND refino_min = ? '
-                                  'AND id IS NOT ?', (nome_norm, refino_min, valor_id)).fetchone()
+                dup = con.execute('SELECT id FROM valores WHERE item_id IS NULL AND grupo_id IS NULL AND nome_norm = ? '
+                                  'AND refino_min = ? AND id IS NOT ?', (nome_norm, refino_min, valor_id)).fetchone()
             if dup:
-                raise ValueError('Esse item já tem um valor para essa faixa de refino.')
+                raise ValueError(f'Esse {"grupo" if grupo_id is not None else "item"} já tem um valor para essa faixa de refino.')
             if valor_id:
-                cur = con.execute('UPDATE valores SET item_id=?, nome=?, nome_norm=?, refino_min=?, valor_kk=?, '
-                                  'atualizado_em=? WHERE id=?',
-                                  (item_id, nome, nome_norm, refino_min, valor_kk, quando, valor_id))
+                cur = con.execute('UPDATE valores SET item_id=?, grupo_id=?, nome=?, nome_norm=?, refino_min=?, '
+                                  'valor_kk=?, atualizado_em=? WHERE id=?',
+                                  (item_id, grupo_id, nome, nome_norm, refino_min, valor_kk, quando, valor_id))
                 if cur.rowcount == 0:
                     raise KeyError(valor_id)
             else:
-                valor_id = con.execute('INSERT INTO valores (item_id, nome, nome_norm, refino_min, valor_kk, criado_em, '
-                                       'atualizado_em) VALUES (?,?,?,?,?,?,?)',
-                                       (item_id, nome, nome_norm, refino_min, valor_kk, quando, quando)).lastrowid
+                valor_id = con.execute('INSERT INTO valores (item_id, grupo_id, nome, nome_norm, refino_min, valor_kk, '
+                                       'criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?)',
+                                       (item_id, grupo_id, nome, nome_norm, refino_min, valor_kk, quando, quando)).lastrowid
         self.recalcular()
         return valor_id
 
@@ -1045,15 +1122,28 @@ class Banco:
                 if con.execute('UPDATE grupos SET nome=?, itens=?, atualizado_em=? WHERE id=?',
                                (nome, itens, quando, grupo_id)).rowcount == 0:
                     raise KeyError(grupo_id)
+                # os valores do grupo acompanham o nome (a tabela de valores mostra o nome guardado)
+                con.execute('UPDATE valores SET nome=?, nome_norm=?, atualizado_em=? WHERE grupo_id=? AND nome != ?',
+                            (nome, norm(nome), quando, grupo_id, nome))
             else:
                 grupo_id = con.execute('INSERT INTO grupos (nome, itens, criado_em, atualizado_em) VALUES (?,?,?,?)',
                                        (nome, itens, quando, quando)).lastrowid
+        if self._grupo_tem_valor(grupo_id):  # os itens do grupo podem ter mudado
+            self.recalcular()
         return grupo_id
 
     def apagar_grupo(self, grupo_id):
-        """As buscas que usam o grupo continuam salvas, mas a condição dele não acha mais nenhuma conta."""
+        """As buscas que usam o grupo continuam salvas, mas a condição dele não acha mais nenhuma conta.
+        Os valores do grupo saem da tabela."""
+        tinha_valor = self._grupo_tem_valor(grupo_id)
         with self._mudando_dados(), self._transacao() as con:
             con.execute('DELETE FROM grupos WHERE id = ?', (grupo_id,))
+            con.execute('DELETE FROM valores WHERE grupo_id = ?', (grupo_id,))
+        if tinha_valor:
+            self.recalcular()
+
+    def _grupo_tem_valor(self, grupo_id):
+        return self.con.execute('SELECT 1 FROM valores WHERE grupo_id = ? LIMIT 1', (grupo_id,)).fetchone() is not None
 
     def _resolver_grupos(self, condicoes):
         """As condições de grupo ganham os item_ids do grupo (e o nome atual dele); grupo apagado não acha nada."""

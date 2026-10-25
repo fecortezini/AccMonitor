@@ -172,7 +172,7 @@ class Item:
     nome: str
     refino: int = 0
     qtd: int = 1
-    efeito: str = ''                              # só pedras engastadas
+    efeito: str = ''                              # pedras engastadas; nas runas, a habilidade em que estão
     tooltip: list = field(default_factory=list)   # linhas de segmentos, ver _Tooltip
 
 
@@ -335,6 +335,14 @@ def _secao(no):
     return 'outros'
 
 
+def _habilidade_da_runa(no):
+    """"Equipada em ΨDevorar", do marcador que o site põe na runa incorporada numa habilidade; '' se está solta."""
+    for n in no.nos():
+        if 'pw187-linked-marker--skill' in (n.attrs.get('class') or '').split():
+            return ' '.join(html.unescape(n.attrs.get('title') or '').split())
+    return ''
+
+
 def ler_conta(pagina):
     """Itens da conta, inclusive as pedras engastadas (seção "engastada")."""
     arvore = _Arvore()
@@ -372,7 +380,8 @@ def ler_conta(pagina):
         nome = dados.get('name') or ia.get('data-item-name') or ia.get('alt') or primeira
         itens.append(Item(secao=secao, item_id=int(item_id) if item_id is not None else None,
                           nome=html.unescape(nome).strip(), refino=int(refino or 0),
-                          qtd=max(1, int(dados.get('count') or 1)), tooltip=linhas))
+                          qtd=max(1, int(dados.get('count') or 1)), tooltip=linhas,
+                          efeito=_habilidade_da_runa(no) if secao == 'runas' else ''))
         for (pedra_id, texto), qtd in Counter(pedras).items():
             nome_pedra, efeito = separar_pedra(texto)
             if efeito:  # imagem sem efeito não é pedra

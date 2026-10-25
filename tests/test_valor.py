@@ -30,6 +30,30 @@ class Faixas(unittest.TestCase):
         self.assertEqual([d['valor_id'] for d in detalhes], [2])
 
 
+class Grupos(unittest.TestCase):
+    def setUp(self):
+        grupo = lambda id_, gid, refino_min, kk: {**linha(id_, None, f'Grupo {gid}', refino_min, kk), 'grupo_id': gid}
+        self.tabela = valor.Tabela([grupo(1, 10, 0, 100), grupo(2, 10, 12, 400), grupo(3, 20, 0, 150),
+                                    linha(4, 501, 'Arma Própria', 12, 900), grupo(5, 99, 0, 999)],
+                                   {10: [500, 501, 502], 20: [502]})
+
+    def test_vale_para_cada_item_do_grupo_com_as_faixas(self):
+        self.assertEqual(self.tabela.linha_para(500, 'x', 0)['id'], 1)
+        self.assertEqual(self.tabela.linha_para(500, 'x', 12)['id'], 2)
+        self.assertIsNone(self.tabela.linha_para(503, 'x', 12))
+
+    def test_valor_do_item_vem_antes_do_grupo(self):
+        self.assertEqual(self.tabela.linha_para(501, 'arma própria', 12)['id'], 4)
+        self.assertEqual(self.tabela.linha_para(501, 'arma própria', 8)['id'], 1)  # sem faixa própria que sirva
+
+    def test_item_em_dois_grupos_vale_o_que_da_mais(self):
+        self.assertEqual(self.tabela.linha_para(502, 'x', 0)['id'], 3)
+        self.assertEqual(self.tabela.linha_para(502, 'x', 12)['id'], 2)
+
+    def test_grupo_que_nao_existe_nao_vale(self):
+        self.assertFalse(any(l['id'] == 5 for g in self.tabela.por_grupo.values() for f in g.values() for l in f))
+
+
 class Avaliar(unittest.TestCase):
     def test_quantidade_vezes_valor(self):
         tabela = valor.Tabela([linha(1, 47498, 'Pérola Astral - Nv 4', 0, 5)])

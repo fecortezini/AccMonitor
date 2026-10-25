@@ -75,8 +75,13 @@ class App:
                 'dados_a_enviar': self.banco.dados_a_enviar()}
 
     def buscar(self, q, corpo):
-        resultado = self.banco.buscar(corpo or {}, self.coletor.ids_do_site)
+        corpo = corpo or {}
+        resultado = self.banco.buscar(corpo, self.coletor.ids_do_site)
         self.coletor.acompanhar([c['id'] for c in resultado['contas']])  # os lances das primeiras, de perto
+        # "Ler primeiro as destes filtros": a interface só pede com algum filtro; sem o pedido, desfaz o anterior
+        para_ler = self.banco.para_ler_na_busca(corpo, self.coletor.ids_do_site)
+        self.coletor.ler_primeiro(para_ler if corpo.get('ler_primeiro') else [])
+        resultado['para_ler'] = len(para_ler)
         return resultado
 
     def conta(self, q, corpo, rid):

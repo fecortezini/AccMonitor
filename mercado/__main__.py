@@ -85,7 +85,8 @@ def janela_aberta(pid=None):
     """True se a janela do programa está aberta, mesmo minimizada ou atrás de outra; None se não der para saber.
 
     Com o pid do Edge que abrimos, vale qualquer janela dele: a do programa ou uma do "Abrir no site".
-    Sem o pid, vale a janela com o título da página.
+    Sem o pid, vale a janela com o título da página (esperar_janela_fechar também olha por ela quando o
+    nosso Edge não tem janela).
     """
     if sys.platform != 'win32':
         return None
@@ -130,11 +131,15 @@ def esperar_janela_fechar(processo, app, janela=janela_aberta, dormir=time.sleep
             sinal, sem_sinal = app.ultimo_sinal, 0
         else:
             sem_sinal += 1
+        # A janela pode ser de outro Edge: a do segundo clique no .bat, aberta enquanto o nosso Edge fechava a
+        # primeira, nasce num processo novo. Por isso, antes de encerrar, vale também a janela com o título.
         if processo is not None and processo.poll() is not None:
-            if voltas > 15:
+            if voltas > 15 and janela(None) is not True:
                 return 'a janela foi fechada'
-            processo = None  # saiu logo de cara: outro Edge do mesmo perfil ficou com a janela, achada pelo título
+            processo = None  # saiu logo de cara, ou a janela é de outro Edge: daqui em diante, a janela com o título
         aberta = janela(processo.pid if processo else None) if com_edge else None
+        if aberta is False and processo is not None:
+            aberta = janela(None) is True
         if aberta is not None:
             if aberta and sem_sinal == 600:  # só para o log: mostra quando o Edge para a página escondida
                 log.info('A página não manda sinal há 10 min, mas a janela continua aberta')

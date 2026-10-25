@@ -1,0 +1,4 @@
+# Os .bat com quebra de linha do Windows também no "Download ZIP" do GitHub
+*.bat text eol=crlf
+# O Python que vem na pasta: guardado como está, sem converter nada
+python/** -text

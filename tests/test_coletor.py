@@ -145,6 +145,43 @@ class Consulta(BaseColetor):
         self.assertNotIn(45520, self.coletor.fila)
 
 
+class LerPrimeiroOsDosFiltros(BaseColetor):
+    def test_contas_que_podem_bater(self):
+        classe = self.site.anuncios[45520].classe
+        ids = self.banco.para_ler_na_busca({'classes': [classe]})
+        self.assertIn(45520, ids)
+        self.assertEqual({self.banco.anuncio(i)['classe'] for i in ids}, {classe})
+        precos = [self.banco.anuncio(i)['preco'] for i in ids]
+        self.assertEqual(precos, sorted(precos))
+        # equipamento do catálogo: só as que a busca do site aponta
+        cosmos = {'itens': [{'item_id': COSMOS, 'nome': 'Cosmos'}]}
+        self.assertEqual(set(self.banco.para_ler_na_busca(cosmos, self.coletor.ids_do_site)), {231216, 3152})
+        # item fora do catálogo: não dá para saber sem ler, valem todas as que faltam ler
+        reliquia = {'itens': [{'item_id': 50410, 'nome': 'Relíquia Maravilha: Arma'}]}
+        self.assertEqual(len(self.banco.para_ler_na_busca(reliquia, self.coletor.ids_do_site)), len(self.site.anuncios))
+        # lida, sai da lista
+        self.banco.gravar_itens(231216, self.site.contas[231216], self.site.anuncios[231216].preco)
+        self.assertEqual(self.banco.para_ler_na_busca(cosmos, self.coletor.ids_do_site), [3152])
+
+    def test_passam_na_frente_e_depois_vem_o_resto(self):
+        self.coletor.preencher_fila()
+        self.coletor.ler_primeiro([3152, 45520])
+        self.coletor.passo()  # processa o pedido e lê a primeira
+        self.coletor.ler_proxima()
+        self.assertEqual(self.site.lidas, [3152, 45520])
+        self.assertEqual(len(self.coletor.fila), len(self.site.anuncios) - 2)  # o resto continua na fila
+
+    def test_filtros_novos_desfazem_os_anteriores(self):
+        self.coletor.preencher_fila()
+        self.coletor.ler_primeiro([3152])
+        self.coletor.ler_primeiro([45520])
+        self.coletor.passo()
+        self.assertEqual(self.site.lidas, [45520])
+        self.assertEqual(self.coletor.fila.prioridade(3152), BAIXA)
+        self.coletor.ler_primeiro([])
+        self.assertEqual(self.coletor._pedidos.qsize(), 1)  # ainda havia contas da busca para desfazer
+
+
 class LeiturasSimultaneas(BaseColetor):
     def enfileirar(self, *ids):
         for rid in ids:

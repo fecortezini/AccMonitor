@@ -1,0 +1,7 @@
+python313.zip
+.
+# a pasta do programa, para o "python -m mercado" achar o pacote mercado
+..
+
+# Uncomment to run site.main() automatically
+#import site

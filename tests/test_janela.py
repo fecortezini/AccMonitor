@@ -46,7 +46,7 @@ class Janela(unittest.TestCase):
     def test_janela_escondida_sem_sinal_continua_aberta(self):
         # minimizada ou atrás do jogo, o Edge pode parar a página e o sinal some, mas a janela está lá
         with self.assertLogs('mercado', 'INFO') as registro:
-            motivo, voltas, _ = esperar(EdgeFalso(fecha_em=3 * 3600), janela=lambda v, pid: True,
+            motivo, voltas, _ = esperar(EdgeFalso(fecha_em=3 * 3600), janela=lambda v, pid: v < 3 * 3600,
                                         sinais=lambda v: v in (5, 3000))
         self.assertEqual((motivo, voltas), ('a janela foi fechada', 3 * 3600))
         self.assertEqual([r.getMessage() for r in registro.records],
@@ -56,7 +56,17 @@ class Janela(unittest.TestCase):
 
     def test_fechar_a_janela_encerra(self):
         motivo, voltas, pids = esperar(EdgeFalso(fecha_em=200), janela=lambda v, pid: v < 199)
-        self.assertEqual((motivo, voltas, pids), ('a janela foi fechada', 200, {4242}))
+        self.assertEqual((motivo, voltas, pids), ('a janela foi fechada', 200, {4242, None}))
+
+    def test_nosso_edge_fechou_mas_ha_janela_em_outro(self):
+        # fechou a janela, o nosso Edge terminou, e a aberta pelo .bat ficou num Edge novo: segue pelo título
+        motivo, voltas, _ = esperar(EdgeFalso(fecha_em=200), janela=lambda v, pid: pid is None and v < 1000)
+        self.assertEqual((motivo, voltas), ('a janela foi fechada', 1029))
+
+    def test_janela_aberta_de_novo_em_outro_edge(self):
+        # fechou a janela e abriu de novo pelo .bat: a nova é de outro Edge e é achada pelo título
+        motivo, voltas, _ = esperar(EdgeFalso(), janela=lambda v, pid: v < 100 if pid == 4242 else v < 1000)
+        self.assertEqual((motivo, voltas), ('o Edge ficou aberto sem a janela do programa', 1029))
 
     def test_edge_aberto_sem_janela(self):
         motivo, voltas, _ = esperar(EdgeFalso(), janela=lambda v, pid: v < 100)
@@ -64,7 +74,7 @@ class Janela(unittest.TestCase):
 
     def test_janela_demorando_a_abrir(self):
         # no primeiro minuto a janela ainda pode não ter aparecido
-        motivo, voltas, _ = esperar(EdgeFalso(fecha_em=500), janela=lambda v, pid: v > 45)
+        motivo, voltas, _ = esperar(EdgeFalso(fecha_em=500), janela=lambda v, pid: 45 < v < 500)
         self.assertEqual((motivo, voltas), ('a janela foi fechada', 500))
 
     def test_outro_edge_ficou_com_a_janela(self):

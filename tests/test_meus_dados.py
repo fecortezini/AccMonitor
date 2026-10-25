@@ -185,6 +185,22 @@ class MeusDados(unittest.TestCase):
         este.apagar_grupo(gid)
         self.assertEqual(self.ler()['grupos'], [])
 
+    def test_valor_de_grupo_vai_para_o_outro_pc(self):
+        este = self.abrir()
+        este.salvar_valor({'nome': 'Pedra do Demônio', 'item_id': 38154, 'valor_kk': 90})
+        self.assertEqual(self.ler()['formato'], 1)  # sem valor de grupo, o arquivo continua o de antes
+        self.assertNotIn('grupo_id', self.ler()['valores'][0])
+        gid = este.salvar_grupo({'nome': 'Livros', 'itens': [{'item_id': COSMOS, 'nome': 'Cosmos'}]})
+        este.salvar_valor({'grupo_id': gid, 'refino_min': 12, 'valor_kk': 9000})
+        arquivo = self.ler()
+        self.assertEqual(arquivo['formato'], 2)  # o programa antigo recusa, em vez de perder o valor do grupo
+        self.assertEqual([(v['nome'], v.get('grupo_id')) for v in arquivo['valores']],
+                         [('Pedra do Demônio', None), ('Livros', gid)])
+        outro = self.abrir('outro')
+        self.assertEqual([(v['nome'], v['grupo_id'], v['valor_kk']) for v in outro.valores() if v['grupo_id']],
+                         [('Livros', gid, 9000.0)])
+        self.assertIn(('Livros', 9000.0), [(d['nome'], d['kk']) for d in outro.conta(231216)['detalhes']])  # o Cosmos +12
+
     def test_pc_que_ja_tinha_dados_fica_com_os_do_arquivo(self):
         este = self.abrir()
         este.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'refino_min': 12, 'valor_kk': 6000})
@@ -298,7 +314,7 @@ class MeusDados(unittest.TestCase):
 
     def test_arquivo_de_versao_mais_nova(self):
         banco = self.abrir()
-        self.escrever({**self.ler(), 'formato': 2})
+        self.escrever({**self.ler(), 'formato': 3})
         with self.assertLogs('mercado', 'WARNING'):
             self.assertFalse(banco.sincronizar())
         self.assertIn('versão mais nova', banco.erro_dados)

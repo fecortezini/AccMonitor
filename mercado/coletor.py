@@ -2,6 +2,7 @@
 
 Ordem da fila (docs/superpowers/specs/2026-09-21-mercado-pw-design.md, seção 4):
   ALTA  contas novas, anunciadas de novo ou que baixaram de preço;
+  BUSCA contas que podem bater com os filtros da tela ("Ler primeiro as destes filtros");
   MEDIA contas que a busca do site diz terem algum item da tabela de valores ou das buscas salvas;
   BAIXA as demais ainda não lidas, das mais baratas para as mais caras.
 """
@@ -18,7 +19,7 @@ from . import avisos, site as site_padrao
 
 log = logging.getLogger('mercado')
 
-ALTA, MEDIA, BAIXA = 0, 1, 2
+ALTA, BUSCA, MEDIA, BAIXA = 0, 1, 2, 3
 TENTATIVAS = 3              # leituras que falham antes de desistir da conta (até o preço mudar)
 CACHE_SITE_S = 120          # validade das respostas da busca do site
 CATALOGO_H = 24             # o catálogo do site é baixado de novo depois disso
@@ -39,8 +40,15 @@ class Fila:
 
     def colocar(self, rid, prioridade):
         if prioridade < self._prio.get(rid, 99):
-            self._prio[rid] = prioridade
-            heapq.heappush(self._heap, (prioridade, next(self._seq), rid))
+            self.definir(rid, prioridade)
+
+    def definir(self, rid, prioridade):
+        """Muda a prioridade mesmo para baixo (a entrada antiga no heap fica e é pulada em tirar)."""
+        self._prio[rid] = prioridade
+        heapq.heappush(self._heap, (prioridade, next(self._seq), rid))
+
+    def prioridade(self, rid):
+        return self._prio.get(rid)
 
     def tirar(self):
         while self._heap:
@@ -113,6 +121,7 @@ class Coletor(threading.Thread):
         self._lendo = set()         # contas sendo lidas agora
         self._na_tela = []          # as primeiras contas da busca na tela: os lances delas são acompanhados de perto
         self._conta_aberta = None   # a conta aberta nos detalhes, também de perto
+        self._da_busca = set()      # contas que subiram para BUSCA pelos filtros da tela
         self._lance_falhou = {}     # rid -> quando a leitura dos lances falhou
         self._proximo_lance_geral = 0.0
 
@@ -135,6 +144,14 @@ class Coletor(threading.Thread):
         """A tabela de valores ou as buscas mudaram: contas com esses itens sobem na fila."""
         self._pedidos.put('repriorizar')
         self._acordar.set()
+
+    def ler_primeiro(self, ids):
+        """As contas que podem bater com os filtros da tela, em ordem (chamado de outra thread): passam na frente
+        das outras ainda não lidas. Uma lista nova substitui a anterior; [] desfaz."""
+        ids = [int(i) for i in ids]
+        if ids or self._da_busca:
+            self._pedidos.put(('busca', ids))
+            self._acordar.set()
 
     def posicao_na_fila(self, rid):
         return rid in self.fila or rid in self._lendo
@@ -176,6 +193,8 @@ class Coletor(threading.Thread):
                 prioritarios = self._ids_prioritarios()
                 for rid in [c['id'] for c in self.banco.contas_para_ler() if c['id'] in prioritarios]:
                     self.fila.colocar(rid, MEDIA)
+            elif isinstance(pedido, tuple):
+                self._priorizar_busca(pedido[1])
             else:
                 self._falhas.pop(pedido, None)
                 self.fila.colocar(pedido, ALTA)
@@ -263,6 +282,19 @@ class Coletor(threading.Thread):
         prioritarios = self._ids_prioritarios()
         for c in pendentes:
             self.fila.colocar(c['id'], MEDIA if c['id'] in prioritarios else BAIXA)
+        self.estado.fila = len(self.fila)
+
+    def _priorizar_busca(self, ids):
+        """Põe as contas dos filtros em BUSCA, na ordem recebida; as dos filtros anteriores voltam ao normal."""
+        novas = [rid for rid in ids if self._falhas.get(rid, (None, 0))[1] < TENTATIVAS]
+        saem = [rid for rid in self._da_busca - set(novas) if self.fila.prioridade(rid) == BUSCA]
+        if saem:
+            prioritarios = self._ids_prioritarios()
+            for rid in saem:
+                self.fila.definir(rid, MEDIA if rid in prioritarios else BAIXA)
+        for rid in novas:
+            self.fila.colocar(rid, BUSCA)
+        self._da_busca = set(novas)
         self.estado.fila = len(self.fila)
 
     def _ids_prioritarios(self):

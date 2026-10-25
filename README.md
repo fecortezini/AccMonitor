@@ -11,7 +11,7 @@ Programa para PC que acompanha o [Marketplace The Classic](https://marketplace.t
 ## Como abrir
 
 Você precisa de:
-- **Python 3.11 ou mais novo.** Não há pacotes para instalar.
+- **Python.** Já vem na pasta `python` (o Python 3.13 "embeddable" do python.org, que não precisa instalar). Sem essa pasta, o programa usa o Python do PC, que precisa ser o 3.11 ou mais novo. Não há pacotes para instalar.
 - **Microsoft Edge.** Já vem no Windows 10 e 11.
 
 Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janela própria, sem abas nem barra de endereço, e **fechar a janela encerra o programa**. Minimizada ou atrás do jogo, ela continua aberta e o programa segue trabalhando. Um segundo clique com ele já aberto apenas abre outra janela.
@@ -21,6 +21,7 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva por volta de 1 h 45 com as configurações padrão, num ritmo que não sobrecarrega o site. Com a pausa de 1 s e 2 contas lidas ao mesmo tempo (⚙ Configurações), cai para uns 45 min. O que já foi lido fica salvo: se fechar no meio, ele continua de onde parou. A barra no topo mostra o progresso.
 2. **O que é lido primeiro:**
    - contas novas ou que baixaram de preço;
+   - com **Ler primeiro as destes filtros** ligado (na barra do topo, aparece quando há filtros), as contas que podem bater com os filtros da aba Contas. Em itens que o site indexa (equipamentos), a busca do próprio site diz quais contas têm o item, e só essas sobem. Nos outros itens, como relíquias e materiais, sobem as que batem com os demais filtros (classe, preço, nível…). A barra mostra quantas faltam. Ao trocar os filtros, as da busca anterior voltam à ordem normal;
    - contas que têm itens da sua tabela de valores (o programa descobre quais são pela busca do próprio site, em menos de 1 s);
    - o restante, das mais baratas para as mais caras.
 3. **Cadastre seus valores.** Na aba **Tabela de valores**, digite "cosmos", escolha a faixa de refino e informe o valor em kk ou bi.
@@ -62,7 +63,10 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
   - **Como vale na busca:** qualquer item do grupo atende à condição, com o mesmo refino mínimo, quantidade e onde.
   - **Mudanças:** um grupo alterado passa a valer em todas as buscas salvas que o usam.
   - **No outro PC:** os grupos vão no `meus-dados.json`.
-  - **Já criados:** **Armas UP4** (as 21 armas com Nível de Ataque +70) e **Armas UP3** (as 32 com +40). O UP3 inclui também as outras armas de Rank 9 com +40, como o Atirador Nebuloso.
+  - **Já criados:**
+    - **UP4:** as 21 armas G17 com Nível de Ataque +70.
+    - **UP5:** as 31 armas seguintes: a versão de ataque (Nível de Ataque +80, id da UP4 + 1) e a de defesa (Nível de Defesa +80, id + 2).
+    - **G17 UP1** e **G17 UP2:** as 12 peças de armadura G17 (Coração de Leão, Ashura da Coragem e Arcanjo da Justiça: peitoral, calça, botas e braçadeira), em ★ no UP1 e ★★ no UP2. São as mesmas contas que o filtro "Armadura G17" do site devolve.
 - **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes).
 - **Lances recebidos:** embaixo do mínimo aparece o maior lance que a conta já recebeu, como "lance 1.296" ou "lance 885 · 2" com dois lances. É o mesmo "Lances pendentes" que o site mostra ao clicar em Fazer lance, sem precisar de login. Um lance novo (dos últimos 30 min) fica verde, com ▲.
   - **As 50 primeiras contas da busca e a conta aberta:** os lances são relidos a cada 1 min, ou mais espaçado se forem muitas, até 10 páginas por minuto. Serve para acompanhar se alguém deu lance numa conta que você quer.
@@ -78,11 +82,15 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
   - nessas ordenações, os empates ficam com o menor preço, e as contas ainda não lidas aparecem com "?" no fim.
 - **Ordenar pela coluna:** clicar no título Preço, Por un., Pesquisados, Valor ou Lucro ordena por ela. A coluna em uso fica dourada, com ▾ (maior primeiro) ou ▴ (menor primeiro).
 - **Detalhes:** mostram os itens por aba, com o tooltip do jogo ao passar o mouse, o botão "Abrir no site" e, por último, de onde vem o valor. Com condições de item, a primeira aba, **Pesquisados**, mostra quanto a conta tem de cada item, onde estão (mochila, banco…) e o preço por unidade. Clicar num item abre um balão para dar valor a ele ali mesmo.
+- **Aba Runas (nos detalhes):** as runas da conta, separadas em **Nas habilidades** (com a habilidade em que cada uma está incorporada, na ordem do site) e **Guardadas** (as iguais juntas, da de maior nível para a menor). O selo **negociável** marca as runas soltas, que podem ser vendidas. O topo resume quantas são. Contas lidas antes desta versão mostram todas como guardadas até serem lidas de novo.
 - **Painéis:** as divisórias ⋮ podem ser arrastadas, e o botão ⟩ recolhe os detalhes (a lista ganha as colunas Céu e Valor). Use ↑ e ↓ para percorrer a lista.
 
 **Tabela de valores**
 - **É global:** cada item é cadastrado uma vez e vale para todas as contas, as de hoje e as futuras.
 - **Sugestões:** vêm do catálogo do site (disponível desde o primeiro minuto) e de tudo o que já foi visto nas contas: materiais, pedras e cartas. Um item que ainda não apareceu pode ser cadastrado pelo nome; o valor passa a contar quando o item surgir.
+- **Valor de um grupo:** os grupos de itens também aparecem nas sugestões. Por exemplo, "Armas UP4 = 100 kk" vale para cada uma das armas do grupo, sem cadastrar uma por uma.
+  - **Criar o grupo ali mesmo:** digite o nome (ex.: "Armas UP4") e clique em **Criar grupo de itens**. Na janela, adicione os itens e feche: o grupo já fica escolhido no "Adicionar item", e falta só o valor. **ver grupos** abre a mesma janela para editar os grupos que já existem.
+  - **Faixas e exceções:** aceita faixas de refino como um item, por exemplo qualquer refino = 100 kk e ≥ +12 = 1 bi. Um item com valor próprio na tabela usa o dele, e o do grupo serve para os outros. Renomear o grupo muda o nome do valor, e apagar o grupo apaga os valores dele.
 
 ![Tabela de valores com o cadastro de um item](docs/telas/tabela-de-valores.png)
 
@@ -105,7 +113,8 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
 ## Como o valor é calculado
 
 - Cada linha da tabela vale **por unidade**, em kk (1 bi = 1.000 kk).
-- **Faixas de refino:** com várias faixas do mesmo item, vale a maior que o item atinge. Com Cosmos +10 = 3 bi e +12 = 6 bi, um Cosmos +12 conta 6 bi.
+- **Faixas de refino:** com várias faixas do mesmo item, vale a maior que o item atinge. Com Cosmos +10 = 3 bi e +12 = 6 bi, um Cosmos +12 conta 6 bi. Cada faixa é o valor total do item com aquele refino: se o livro vale 3 bi e o +12 acrescenta 2,4 bi, cadastre qualquer refino = 3 bi e ≥ +12 = 5,4 bi.
+- **Grupos:** a linha de um grupo vale para cada item dele, com as mesmas faixas. O valor do próprio item vem antes. Se nenhuma faixa dele serve para o refino que a conta tem, vale o do grupo. Com o item em mais de um grupo, vale o grupo que dá mais.
 - **Quantidades:** itens empilháveis contam quantidade × valor, e cada pedra engastada conta uma unidade.
 - **O que fica de fora:** o códice (coleção de visuais) e a lista de recompra. O ouro que o personagem carrega também não entra, porque os vendedores costumam retirá-lo.
 - **Contas:**
@@ -120,6 +129,7 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
 | Caminho | O que é |
 |---|---|
 | `Mercado PW.bat` | Abre o programa. |
+| `python/` | O Python que o programa usa, sem instalar (o "embeddable" 3.13 do python.org). O `python313._pth` inclui a pasta do programa (`..`) para o `-m mercado` funcionar. |
 | `mercado/` | Código: leitura do site, banco, cálculo, coletor, avisos, servidor local e interface (`mercado/ui`). |
 | `meus-dados.json` | Sua tabela de valores, buscas, grupos de itens e configurações. Vai pelo git para os outros PCs (veja "Em mais de um PC"). |
 | `mercado.db` | As contas lidas do site, o histórico de avisos e uma cópia dos seus dados. Fica só neste PC. |

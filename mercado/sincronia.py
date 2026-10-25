@@ -102,13 +102,13 @@ def juntar(base, local, remoto):
     - os dois mudaram o mesmo item: fica a versão mais recente (atualizado_em);
     - um apagou e o outro mudou: fica a mudança;
     - os dois criaram um item com o mesmo id: o do outro PC fica com o id, e o deste ganha um novo.
-      As buscas deste PC que usavam um grupo que mudou de id passam a usar o id novo;
+      As buscas e os valores deste PC que usavam um grupo que mudou de id passam a usar o id novo;
     - uma configuração mudada nos dois: fica a deste PC.
     """
     cfg = {chave: remoto['configuracoes'].get(chave, v) if v == base['configuracoes'].get(chave) else v
            for chave, v in local['configuracoes'].items()}
     grupos, novos_ids = _juntar_lista(base['grupos'], local['grupos'], remoto['grupos'])
-    valores, _ = _juntar_lista(base['valores'], local['valores'], remoto['valores'])
+    valores, _ = _juntar_lista(base['valores'], local['valores'], remoto['valores'], _trocar_grupo_do_valor(novos_ids))
     buscas, _ = _juntar_lista(base['buscas'], local['buscas'], remoto['buscas'], _trocar_grupos(novos_ids))
     return dados_normalizados({'configuracoes': cfg, 'valores': valores, 'buscas': buscas, 'grupos': grupos})
 
@@ -156,6 +156,13 @@ def _trocar_grupos(novos_ids):
                     c['grupo_id'] = novos_ids[c['grupo_id']]
         return {**busca, 'filtros': filtros}
     return trocar
+
+
+def _trocar_grupo_do_valor(novos_ids):
+    """Ajuste dos valores deste PC: o valor de um grupo passa para o id novo do grupo."""
+    if not novos_ids:
+        return None
+    return lambda v: {**v, 'grupo_id': novos_ids[v['grupo_id']]} if v.get('grupo_id') in novos_ids else v
 
 
 def _resumo(antes, depois):

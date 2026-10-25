@@ -41,6 +41,9 @@ class ColetorFalso:
     def acompanhar_conta(self, rid):
         self.aberta = rid
 
+    def ler_primeiro(self, ids):
+        self.primeiro = ids
+
 
 class Servidor(unittest.TestCase):
     @classmethod
@@ -97,6 +100,14 @@ class Servidor(unittest.TestCase):
         self.assertEqual({c['id']: c['a_confirmar'] for c in dados['contas']}, {231216: False, 3152: True})
         self.assertEqual([(c['id'], c['qtd_busca']) for c in dados['contas']], [(231216, [1]), (3152, None)])
         self.assertEqual([(b['item_id'], b['refino_min']) for b in dados['busca_itens']], [(COSMOS, 12)])
+
+    def test_buscar_pede_para_ler_primeiro(self):
+        filtros = {'itens': [{'item_id': COSMOS, 'refino_min': 12}]}
+        _, dados = self.chamar('POST', '/api/buscar', {**filtros, 'ler_primeiro': True})
+        self.assertEqual(self.coletor.primeiro, [3152])  # a 231216 já foi lida
+        self.assertEqual(dados['para_ler'], 1)
+        self.chamar('POST', '/api/buscar', filtros)
+        self.assertEqual(self.coletor.primeiro, [])
 
     def test_conta(self):
         status, dados = self.chamar('GET', '/api/conta/45520')
