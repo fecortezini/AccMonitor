@@ -67,6 +67,9 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
     - **UP4:** as 21 armas G17 com Nível de Ataque +70.
     - **UP5:** as 31 armas seguintes: a versão de ataque (Nível de Ataque +80, id da UP4 + 1) e a de defesa (Nível de Defesa +80, id + 2).
     - **G17 UP1** e **G17 UP2:** as 12 peças de armadura G17 (Coração de Leão, Ashura da Coragem e Arcanjo da Justiça: peitoral, calça, botas e braçadeira), em ★ no UP1 e ★★ no UP2. São as mesmas contas que o filtro "Armadura G17" do site devolve.
+    - **UP3:** as 34 armas ★★★ com Nível de Ataque +40.
+    - **R8 UP3:** os sets ★★★ de Classe/Patente 8 das 17 classes (68 peças: peitoral, calça, botas e braçadeira), como a Brigandina do Oceano: Sol.
+    - **R9 UP1**, **R9 UP2** e **R9 UP3:** as armaduras de R9 de cada fase (só peitoral, calça, botas e braçadeira). A fase vem da defesa da peça, que é fixa em cada uma, e não das estrelas: o Escárnio das Almas ★★★ é UP2, por exemplo. O UP3 é a série "digno de honra" (Adversidade, Apoteose, Réquiem...) e a das classes novas; nestas, as peças que nenhuma conta lida usava entraram por eliminação.
 - **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes).
 - **Lances recebidos:** embaixo do mínimo aparece o maior lance que a conta já recebeu, como "lance 1.296" ou "lance 885 · 2" com dois lances. É o mesmo "Lances pendentes" que o site mostra ao clicar em Fazer lance, sem precisar de login. Um lance novo (dos últimos 30 min) fica verde, com ▲.
   - **As 50 primeiras contas da busca e a conta aberta:** os lances são relidos a cada 1 min, ou mais espaçado se forem muitas, até 10 páginas por minuto. Serve para acompanhar se alguém deu lance numa conta que você quer.
