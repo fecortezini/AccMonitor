@@ -210,7 +210,7 @@ Tema escuro, fonte Segoe UI Variable, ícones reais do jogo, conforme os mockups
 |---|---|
 | `intervalo_s` | 60 (mínimo 30) |
 | `pausa_s` | 2 (mínimo 1) |
-| `leituras_simultaneas` | 1 (máximo 2) |
+| `leituras_simultaneas` | 1 (máximo 8; era 2 até 26/10) |
 | `rs_por_bi` | 500,00 |
 | `rs_por_tcc` | 1,00 |
 | `aviso_windows` | ligado |
@@ -268,6 +268,7 @@ As larguras dos painéis também ficam em `config`. Elas, o Telegram e o Discord
 - **Grupos de itens (24/09):**
   - ficam na tabela `grupos` (nome e itens em JSON, com `item_id` e nome) e no `meus-dados.json`;
   - na busca, uma condição `grupo_id` vale para qualquer item do grupo: `item_id IN (…)`, com o refino, a quantidade (somada entre os itens) e o "onde" da condição;
+  - *Depois (26/10):* no "Tem item" (`itens`), o grupo exige todos os itens (`todos` na condição), como as cartas de um combo. Cada item precisa atingir a quantidade, e a conta precisa ter tantos itens distintos quanto o grupo. A busca do site faz uma consulta por item e fica com a interseção. No "Tem pelo menos um" (`algum`), continua valendo qualquer item;
   - `_resolver_grupos` põe os itens e o nome de agora na condição; um grupo apagado não acha nada;
   - a busca do site junta os equipamentos do catálogo que estão no grupo numa consulta só (o site trata vários itens com OU);
   - na interface, os grupos aparecem primeiro nas sugestões de "Tem item" e "Tem pelo menos um";

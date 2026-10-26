@@ -5,6 +5,7 @@ import threading
 import time
 import unittest
 import urllib.error
+from unittest import mock
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -199,9 +200,20 @@ class LeiturasSimultaneas(BaseColetor):
         self.coletor.ler_proxima()
         self.assertEqual(sorted(self.site.lidas), [45520, 231216])
         self.assertEqual(self.site.max_baixando, 2)  # os dois downloads ao mesmo tempo
+        self.assertEqual(len(self.coletor.estado._leituras), 2)  # as duas contam no ritmo da leitura
         self.assertTrue(all(self.banco.anuncio(rid)['itens_lidos_em'] for rid in (45520, 231216)))
         self.assertEqual((len(self.coletor.fila), self.coletor.estado.fila), (1, 1))
         self.assertFalse(self.coletor.posicao_na_fila(45520))
+
+    def test_varias_ao_mesmo_tempo(self):
+        ids = list(self.site.anuncios)[:6]
+        self.banco.salvar_config({'leituras_simultaneas': 5})
+        self.site.demora = 0.3
+        self.enfileirar(*ids)
+        self.coletor.ler_proxima()
+        self.assertEqual(len(self.site.lidas), 5)
+        self.assertEqual(self.site.max_baixando, 5)  # os cinco downloads ao mesmo tempo
+        self.assertEqual(len(self.coletor.fila), 1)
 
     def test_site_recusou_volta_para_uma_por_vez(self):
         self.banco.salvar_config({'leituras_simultaneas': 2})
@@ -210,8 +222,39 @@ class LeiturasSimultaneas(BaseColetor):
         self.coletor.ler_proxima()
         self.assertEqual(self.banco.config()['leituras_simultaneas'], 1)
         self.assertIn('recusou', self.coletor.estado.erro)
+        self.assertIn('com 2 contas', self.coletor.estado.erro)
         self.assertTrue(self.banco.anuncio(231216)['itens_lidos_em'])  # a outra conta do par foi lida
         self.assertIn(45520, self.coletor.fila)  # a recusada volta para a fila
+
+
+class Ritmo(unittest.TestCase):
+    """Contas lidas por minuto, para a estimativa do tempo que falta na barra do topo."""
+
+    def setUp(self):
+        self.estado, self.agora = Estado(), [1000.0]
+        relogio = mock.patch('mercado.coletor.time.monotonic', lambda: self.agora[0])
+        relogio.start()
+        self.addCleanup(relogio.stop)
+
+    def ler(self, vezes, contas, a_cada):
+        for _ in range(vezes):
+            self.estado.leu(contas)
+            self.agora[0] += a_cada
+
+    def test_contas_por_minuto(self):
+        self.ler(10, 2, 6)  # duas contas a cada 6 s
+        self.assertEqual(self.estado.por_minuto(), 20.0)
+        self.assertEqual(self.estado.como_dict()['por_minuto'], 20.0)
+
+    def test_calculando_no_comeco(self):
+        self.assertIsNone(self.estado.por_minuto())
+        self.ler(3, 2, 6)  # menos de 1 min de leitura
+        self.assertIsNone(self.estado.por_minuto())
+
+    def test_so_os_ultimos_minutos(self):
+        self.ler(10, 2, 6)
+        self.agora[0] += 400  # parou de ler: as leituras antigas saem da conta
+        self.assertIsNone(self.estado.por_minuto())
 
 
 class Lances(BaseColetor):
@@ -359,6 +402,14 @@ class Avisos(BaseColetor):
         self.assertEqual(self.coletor.ids_do_site({'grupo_id': 1, 'itens': [38154, COSMOS]}), {231216, 3152})
         self.assertEqual(self.site.buscas[-1], ((COSMOS,), None))
         self.assertIsNone(self.coletor.ids_do_site({'grupo_id': 2, 'itens': [38154]}))
+
+    def test_ids_do_site_de_grupo_que_precisa_de_todos(self):
+        """No "Tem item", o grupo exige todos os itens: uma busca por item, e valem as contas que aparecem em todas."""
+        self.coletor._catalogo = {COSMOS, 777}
+        por_item = {COSMOS: {231216, 3152}, 777: {3152, 45520}}
+        self.site.busca_site = lambda ids, cosmos_min=None: set().union(*(por_item[i] for i in ids))  # o site junta com OU
+        self.assertEqual(self.coletor.ids_do_site({'grupo_id': 1, 'itens': [COSMOS, 777, 38154], 'todos': True}), {3152})
+        self.assertEqual(self.coletor.ids_do_site({'grupo_id': 1, 'itens': [COSMOS, 777], 'todos': False}), {231216, 3152, 45520})
 
 
 if __name__ == '__main__':

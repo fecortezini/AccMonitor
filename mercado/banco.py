@@ -87,7 +87,7 @@ PADROES = {
     'telegram_token': '', 'telegram_chat': '', 'discord_webhook': '',
     'largura_filtros': 27, 'largura_detalhes': 33, 'detalhes_recolhidos': False,
 }
-LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'leituras_simultaneas': (1, 2),
+LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'leituras_simultaneas': (1, 8),
            'rs_por_bi': (0.01, 10_000_000), 'rs_por_tcc': (0.01, 100_000),
            'largura_filtros': (15, 45), 'largura_detalhes': (20, 50)}
 # Ficam só em cada PC, fora do meus-dados.json: o tamanho dos painéis (a tela pode ser outra) e os
@@ -138,8 +138,9 @@ def _marcadores(n):
 def _condicao(c):
     """Condição de item da busca com os campos já no formato certo (a interface recebe de volta).
 
-    Ela é de um item (item_id), de parte do nome (nome) ou de um grupo de itens (grupo_id), que vale
-    para qualquer item do grupo: ver Banco._resolver_grupos.
+    Ela é de um item (item_id), de parte do nome (nome) ou de um grupo de itens (grupo_id). O grupo
+    exige todos os itens dele no "Tem item" (as cartas de um combo) e qualquer um no "Tem pelo menos
+    um" (a arma de um rank): ver Banco._resolver_grupos.
     """
     item_id = c.get('item_id')
     return {'item_id': int(item_id) if item_id else None, 'grupo_id': _inteiro(c.get('grupo_id')),
@@ -642,7 +643,7 @@ class Banco:
         f = filtros or {}
         p = {}
         conds = _filtros_do_anuncio(f, p) + [_PARA_LER]
-        for cond in self._resolver_grupos(_condicoes(f.get('itens'))):
+        for cond in self._resolver_grupos(_condicoes(f.get('itens')), todos=True):
             if (ids := ids_do_site(cond) if ids_do_site else None) is not None:
                 conds.append(f'a.id IN ({_ids_sql(ids)})')
         algum = self._resolver_grupos(_condicoes(f.get('algum')))
@@ -913,8 +914,8 @@ class Banco:
         conds = _filtros_do_anuncio(f, p)
         base = list(conds)
 
-        # "Tem item" (itens): a conta precisa atender a todas as condições
-        condicoes = self._resolver_grupos(_condicoes(f.get('itens')))
+        # "Tem item" (itens): a conta precisa atender a todas as condições, e de um grupo ter todos os itens
+        condicoes = self._resolver_grupos(_condicoes(f.get('itens')), todos=True)
         filtros_item = []
         for n, cond in enumerate(condicoes):
             filtro, sub = self._contas_com_item(cond, f'i{n}', p)
@@ -966,7 +967,8 @@ class Banco:
     def _filtro_item(cond, chave, p):
         """Itens (tabela i) que atendem à condição: qual item, refino mínimo e onde ele está.
 
-        De um grupo, vale qualquer item dele (itens, que _resolver_grupos preenche). Sem item_id (item
+        De um grupo, vale qualquer item dele (itens, que _resolver_grupos preenche); quando ele exige todos,
+        quem confere é _contas_com_item. Sem item_id (item
         digitado, ainda não visto), vale qualquer item com esse texto no nome.
         chave distingue os parâmetros de cada condição na consulta.
         """
@@ -985,9 +987,17 @@ class Banco:
         return f'{alvo} AND i.refino >= :{chave}_ref AND {onde}'
 
     def _contas_com_item(self, cond, chave, p):
-        """(filtro dos itens, subconsulta das contas) de uma condição: todas as pilhas somadas atingem a quantidade."""
+        """(filtro dos itens, subconsulta das contas) de uma condição: todas as pilhas somadas atingem a quantidade.
+
+        Num grupo que exige todos os itens, cada item dele precisa atingir a quantidade.
+        """
         filtro = self._filtro_item(cond, chave, p)
         p[f'{chave}_qtd'] = cond['qtd_min']
+        if cond.get('todos'):
+            p[f'{chave}_n'] = len(cond.get('itens') or ())
+            return filtro, (f'SELECT anuncio_id FROM (SELECT i.anuncio_id FROM itens i WHERE {filtro} '
+                            f'GROUP BY i.anuncio_id, i.item_id HAVING SUM(i.qtd) >= :{chave}_qtd) '
+                            f'GROUP BY anuncio_id HAVING COUNT(*) = :{chave}_n')
         return filtro, (f'SELECT i.anuncio_id FROM itens i WHERE {filtro} '
                         f'GROUP BY i.anuncio_id HAVING SUM(i.qtd) >= :{chave}_qtd')
 
@@ -1145,8 +1155,11 @@ class Banco:
     def _grupo_tem_valor(self, grupo_id):
         return self.con.execute('SELECT 1 FROM valores WHERE grupo_id = ? LIMIT 1', (grupo_id,)).fetchone() is not None
 
-    def _resolver_grupos(self, condicoes):
-        """As condições de grupo ganham os item_ids do grupo (e o nome atual dele); grupo apagado não acha nada."""
+    def _resolver_grupos(self, condicoes, todos=False):
+        """As condições de grupo ganham os item_ids do grupo (e o nome atual dele); grupo apagado não acha nada.
+
+        todos: a conta precisa ter todos os itens do grupo ("Tem item"), não um só ("Tem pelo menos um").
+        """
         if any(c['grupo_id'] is not None for c in condicoes):
             grupos = {g['id']: g for g in self.grupos()}
             for c in condicoes:
@@ -1154,6 +1167,7 @@ class Banco:
                     g = grupos.get(c['grupo_id'])
                     c['itens'] = [it['item_id'] for it in g['itens']] if g else []
                     c['nome'] = g['nome'] if g else c['nome']
+                    c['todos'] = todos
         return condicoes
 
     # -------------------------------------------------------------- buscas salvas e avisos

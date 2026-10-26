@@ -6,6 +6,7 @@ Ordem da fila (docs/superpowers/specs/2026-09-21-mercado-pw-design.md, seção 4
   MEDIA contas que a busca do site diz terem algum item da tabela de valores ou das buscas salvas;
   BAIXA as demais ainda não lidas, das mais baratas para as mais caras.
 """
+import collections
 import heapq
 import itertools
 import logging
@@ -30,6 +31,9 @@ LANCES_MIN_S = 60           # ...cada uma no máximo a cada 1 min...
 LANCES_POR_MINUTO = 10      # ...e, com muitas contas, o intervalo cresce para não passar disso
 LANCES_GERAL_S = 30         # as demais, devagar: uma a cada 30 s, a de lances vistos há mais tempo
 LANCES_FALHA_S = 300        # uma conta cuja página falhou só é tentada de novo depois disso
+# Ritmo da leitura, para estimar quanto falta: as contas lidas nos últimos 5 min (pelo menos 5 contas e 1 min)
+RITMO_S = 300
+RITMO_MIN_CONTAS = 5
 
 
 class Fila:
@@ -90,14 +94,32 @@ class Estado:
         self.sem_conexao_desde = None
         self.lendo = None
         self.fila = 0
+        self._leituras = collections.deque()  # quando cada conta foi lida, nos últimos RITMO_S
 
     def mudou(self):
         with self._trava:
             self.versao += 1
 
+    def leu(self, n):
+        """n contas acabaram de ser lidas (as que falharam também: gastaram o tempo da leitura)."""
+        agora = time.monotonic()
+        with self._trava:
+            self._leituras.extend([agora] * n)
+
+    def por_minuto(self):
+        """Contas lidas por minuto nos últimos RITMO_S, ou None enquanto há pouca leitura para estimar."""
+        agora = time.monotonic()
+        with self._trava:
+            while self._leituras and self._leituras[0] < agora - RITMO_S:
+                self._leituras.popleft()
+            if len(self._leituras) < RITMO_MIN_CONTAS or agora - self._leituras[0] < 60:
+                return None
+            return round(len(self._leituras) / (agora - self._leituras[0]) * 60, 1)
+
     def como_dict(self):
         return {'versao': self.versao, 'ultima_consulta': self.ultima_consulta, 'erro': self.erro,
-                'sem_conexao_desde': self.sem_conexao_desde, 'lendo': self.lendo, 'fila': self.fila}
+                'sem_conexao_desde': self.sem_conexao_desde, 'lendo': self.lendo, 'fila': self.fila,
+                'por_minuto': self.por_minuto()}
 
 
 class Coletor(threading.Thread):
@@ -305,7 +327,7 @@ class Coletor(threading.Thread):
         return self._busca_site(('itens', tuple(itens)), lambda: self.site.busca_site(itens)) or set()
 
     def ler_proxima(self):
-        """Lê a próxima conta da fila ou, com "contas lidas ao mesmo tempo" em 2, as duas próximas juntas."""
+        """Lê a próxima conta da fila ou, com "contas lidas ao mesmo tempo" acima de 1, as N próximas juntas."""
         simultaneas = self.banco.config()['leituras_simultaneas']
         lote = []
         while len(lote) < simultaneas and (rid := self.fila.tirar()) is not None:
@@ -325,6 +347,7 @@ class Coletor(threading.Thread):
             self._ultimo_detalhe = time.monotonic()
             self.estado.lendo = None
             self._lendo = set()
+        self.estado.leu(len(lote))
         for anuncio, (lido, erro) in zip(lote, resultados):
             itens, lance = lido or (None, None)
             if lance is not None:  # a página que veio pelos itens também traz os lances
@@ -358,8 +381,10 @@ class Coletor(threading.Thread):
                     self.banco.salvar_config({'leituras_simultaneas': 1})
                 except ValueError as e:  # o meus-dados.json está com erro e não aceita mudanças agora
                     log.warning('Não consegui mudar para uma conta por vez: %s', e)
-                log.warning('O site recusou uma leitura; voltando a ler uma conta por vez')
-                self._falha(f'O site recusou uma leitura (HTTP {erro.code}). Voltei a ler uma conta por vez.')
+                log.warning('O site recusou uma leitura com %s contas ao mesmo tempo; voltando a ler uma por vez',
+                            simultaneas)
+                self._falha(f'O site recusou uma leitura (HTTP {erro.code}) com {simultaneas} contas ao mesmo tempo. '
+                            'Voltei a ler uma conta por vez.')
             else:
                 self._falha('Sem conexão com o site.', conexao=True)
         if not itens:
@@ -476,11 +501,23 @@ class Coletor(threading.Thread):
         """ids de contas que a busca do site encontra para uma condição de item, ou None.
 
         Só vale para equipamentos do catálogo. O refino só é filtrado no caso do Cosmos. Num grupo,
-        vale a conta que tem qualquer um dos equipamentos dele (o site junta vários itens com OU).
+        vale a conta que tem qualquer um dos equipamentos dele (o site junta vários itens com OU) ou,
+        se ele exige todos (todos), a que aparece na busca de cada um. Os itens fora do catálogo
+        ficam sem conferir, até a conta ser lida.
         """
         if cond.get('grupo_id') is not None:
             ids = sorted(set(cond.get('itens') or ()) & self._ids_catalogo())
-            return self._busca_site(('grupo', tuple(ids)), lambda: self.site.busca_site(ids)) if ids else None
+            if not ids:
+                return None
+            if not cond.get('todos'):
+                return self._busca_site(('grupo', tuple(ids)), lambda: self.site.busca_site(ids))
+            contas = None
+            for item_id in ids:
+                achadas = self._busca_site(('item', item_id, 0), lambda i=item_id: self.site.busca_site([i]))
+                if achadas is None:
+                    return None
+                contas = achadas if contas is None else contas & achadas
+            return contas
         item_id = cond.get('item_id')
         if not str(item_id or '').isdigit() or int(item_id) not in self._ids_catalogo():
             return None

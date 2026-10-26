@@ -35,6 +35,24 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Lances (25/09):** a lista mostra embaixo do preço o maior lance que a conta recebeu, e os detalhes mostram "N lances · maior: X". Vem do botão "Fazer lance" da página da conta (`data-bid-pending` e `data-bid-highest`), sem login.
   - **Ritmo:** as 50 primeiras contas da busca e a conta aberta são relidas a cada 1 min (mais espaçado se forem muitas, até 10 páginas por minuto). As outras, uma a cada 30 s.
   - **Lance novo:** maior valor ou mais lances do que da última vez; fica verde por 30 min e vai para o log.
+- **Combos de cartas (26/10):** no "Tem item", um grupo passa a exigir **todos** os itens dele. No "Tem pelo menos um", continua bastando um.
+  - **Grupos criados:**
+    - **Combo Seis Soberanos** (combo A): Imperador Locen, Senhora da Noite, Gorath, Imperador Chigo, Imperador Aohe e Asa Espectral.
+    - **Combo Portal de Nuema** (combo S): Althea, Kestra, Astrid, Lorelei, Saki e Tensa.
+    - Em cada combo, uma carta de cada tipo: Destruidor, Batalha, Durabilidade, Alma Primordial, Vida Primordial e Longevidade.
+  - **Como foram achados:** o tooltip das cartas no site não serve. Todas as cartas, até as de nível C, mostram "Seis Soberanos da Chama da Vela (6)".
+    - **Seis Soberanos:** saiu das descrições das cartas A. São os seis "Soberanos de Morai" (Leste, Norte, Central, Oeste, Sul e Superior), servos de Aurogon, que em chinês é 烛龙, o "Dragão da Vela".
+    - **Portal de Nuema:** passado pelo usuário.
+  - **Na prática (663 contas lidas):** 204 contas têm o Seis Soberanos completo e 431 o Portal de Nuema. As cartas ficam quase sempre equipadas. Para só as contas com as 6 equipadas, use "onde: equipado".
+  - **Busca do site (contas ainda não lidas):** ela junta vários itens com OU. Para o grupo no "Tem item", o programa busca cada item e fica só com as contas que aparecem em todas as buscas.
+- **Grupo Runas Nv. 5+ (26/10):** criado pela API, com as 45 runas de nível 5 a 10 conhecidas. São 5 cores × níveis 5 a 10 (ids 52179–52184, 52189–52194, 52199–52204, 52209–52214, 52219–52224), mais as variantes "Nv. 5" 200359–200363, "Nível 7" 69801–69805 e "Nível 8" 69808–69812. O "Pacote Runa Nível 5" ficou de fora.
+  - **O nível está no nome:** cada nível é um item com id próprio, sem refino. A página da conta mostra as runas na aba Habilidades, cada uma na habilidade em que está ("Equipada em …").
+  - **É para o "Tem pelo menos um".** A busca do site não conhece runas, então as contas não lidas não aparecem "a confirmar".
+  - **Na prática (1.621 contas lidas):** 1.110 têm runa de nível 5+, 786 de 8+, 404 de 9+ e 337 de nível 10. As de nível 5 e "Nível 8" são comuns.
+  - **Runas Nv. 10:** a pedido do usuário, ficou também um grupo só com as 5 de nível 10 (52184, 52194, 52204, 52214, 52224). Às 14:02 eram 350 contas lidas.
+- **Grupos trazidos do GitHub (26/10):** do commit 2345589 (origin/main) vieram só os grupos R8 UP3 e R9 UP1/UP2/UP3, a pedido do usuário. O UP3 ficou de fora.
+  - **Como:** com a mesma junção do Sincronizar (`sincronia.juntar`). A base é o HEAD (4eb08ff) e o "remoto" é ele mais os 4 grupos. O HEAD não andou, porque o `meus-dados.json` e o README tinham mudanças locais que conflitariam num `git pull`.
+  - **Ids:** os 4 grupos ficaram com os ids do GitHub (8 a 11). Os criados aqui hoje foram renumerados: Combo Seis Soberanos 12, Combo Portal de Nuema 13, Runas Nv. 5+ 14 e Runas Nv. 10 15. A busca salva foi junto. O id 7 ficou livre para o UP3 do GitHub, e a próxima sincronia só acrescenta o UP3, sem renumerar nem duplicar (simulado).
 - **Grupos de itens (24/09):** juntam itens buscados juntos, como as armas de um rank.
   - **Na busca:** o grupo vira uma condição só, que vale para qualquer item dele. Funciona no "Tem item" e no "Tem pelo menos um", e escolher item por item continua possível.
   - **Criar e editar:** pelo link "grupos", no painel de filtros.
@@ -74,6 +92,17 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
   - **Medido no site real, com pausa de 1 s:** 2,2 s por conta lendo uma por vez e 1,3 s lendo duas.
   - **Se o site recusar:** com a opção em 2, uma resposta 403, 429 ou 503 faz ela voltar sozinha para 1, e aparece um aviso no topo.
   - **Risco de bloqueio (avaliado em 22/09):** o site não tem `robots.txt`, serviço anti-robô nem cabeçalhos de limite de acesso, e não recusou nenhuma das ~1.260 contas lidas até então. Com 2, são ~45 páginas por minuto: dá para notar nos registros do servidor, mas é bem menos do que as proteções automáticas costumam barrar.
+  - **Até 8 (26/10):** o máximo subiu de 2 para 8, para testar até onde o site aceita. Se ele recusar, o aviso do topo e o `mercado.log` dizem com quantas contas ao mesmo tempo foi.
+  - **Resultado do teste (26/10): o site bloqueou o IP três vezes, por 1 h cada.** O 2º começou às 10:32 e liberou perto das 11:32. O programa tentou às 11:07, no meio dele, e isso não aumentou o bloqueio.
+    - **Como o bloqueio aparece:** primeiro "read operation timed out", depois nenhuma conexão (WinError 10060). Todo o theclassic.games para de responder, mas o ping continua. Não vem nenhum HTTP 403/429/503, então a volta automática para 1 não dispara.
+    - **1º bloqueio:** 8 ao mesmo tempo com pausa de 2 s. Foram 573 contas em 12 min (~47/min).
+    - **2º bloqueio:** 4 ao mesmo tempo, com pausa de 2 s por 11 min (570 contas, ~52/min) e depois de 1 s (~75/min). Foi bloqueado 1 min e meio depois de passar para 1 s.
+    - **3º bloqueio (14:00):** o programa foi aberto às 13:31 com 1 ao mesmo tempo e pausa de 2 s (~17/min). Às 13:53 passou para 2 (~31/min). Foram ~572 contas em 29 min, mais ~25 consultas da lista. De fora do programa, só 1 página (a de uma conta, às 13:51).
+    - **Conclusão:** não é a velocidade. Os três bloqueios vieram depois de **~600 a 650 acessos** desde o fim do bloqueio anterior, em 18, 15 e 29 min. No 3º, os últimos 15 min tiveram só ~330 páginas, então a janela de contagem é de pelo menos 30 min, talvez 1 h. Parece um fail2ban: N acessos numa janela, bloqueio de 1 h.
+    - **Lances:** depois da carga inicial, a releitura de lances baixa até 12 páginas por minuto (10 das contas na tela e 1 das outras a cada 30 s). São até 720 por hora, acima desse limite se a janela for de 1 h. Durante a carga ela não roda, só com a fila vazia.
+    - **O servidor:** monta uma página em 0,4 a 0,6 s, mas com várias ao mesmo tempo cada uma demora mais (1,4 a 1,7 s). Cada página tem ~1,2 MB de HTML (~120 KB compactados).
+- **Tempo que falta (26/10):** a barra "Lendo as contas" mostra quanto falta para ler a fila, no ritmo dos últimos 5 min, por exemplo "faltam ~36 min (33 por minuto)". Com menos de 1 min de leitura, aparece "calculando quanto falta". O ritmo é calculado no `Estado` do coletor (`por_minuto`, em `/api/estado`).
+- **Busca do site para cartas (26/10):** conferida com a Althea. Entre as 702 contas lidas, ela achou exatamente as 521 que têm a carta, em qualquer lugar da conta. Por isso as contas não lidas de um combo, que aparecem "a confirmar", são praticamente certas.
 - **Lance mínimo (22/09):** embaixo do preço, na lista e nos detalhes, aparece pequeno o lance mínimo: 70% do preço pedido, fixo e arredondado para cima. *Em 24/09:* o Por un. também ganhou embaixo o preço por unidade com o lance mínimo, e a aba Pesquisados dos detalhes também.
 - **Aviso por preço (21/09):** a janela "Salvar busca" tem "só avisar se o preço for de até … TCC" (aceita "5k"), além do lucro mínimo.
 - **Detalhes (21/09):** "De onde vem o valor" foi para o fim do painel, depois dos itens e dos botões.

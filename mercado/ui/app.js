@@ -201,12 +201,24 @@ function desenharCarga() {
   const doFiltro = S.resultado?.para_ler;
   let texto = 'O valor e os filtros de materiais ficam completos quando terminar; as contas novas são lidas primeiro.';
   if (filtrando && S.lerPrimeiro && doFiltro != null) {
-    texto = doFiltro ? `Primeiro as que podem bater com estes filtros: faltam <b>${inteiro(doFiltro)}</b>. Depois, as outras.`
+    texto = doFiltro ? `Primeiro as que podem bater com estes filtros: faltam <b>${inteiro(doFiltro)}</b>`
+      + `${e.por_minuto ? ` (${tempoParaLer(doFiltro, e.por_minuto)})` : ''}. Depois, as outras.`
       : 'As contas destes filtros já foram lidas. Agora, as outras.';
   } else if (!filtrando) {
     texto += ' Com filtros, dá para ler primeiro as contas deles.';
   }
-  carga.querySelector('span').innerHTML = `Lendo as contas: <b>${inteiro(e.lidas)}</b> de ${inteiro(e.ativas)}. ${texto}`;
+  // quanto falta: as contas da fila do coletor no ritmo dos últimos minutos (por_minuto, que o servidor calcula)
+  const falta = !e.fila ? '' : e.por_minuto ? ` · faltam <b>${tempoParaLer(e.fila, e.por_minuto)}</b> (${inteiro(Math.round(e.por_minuto))} por minuto)`
+    : ' · calculando quanto falta';
+  carga.querySelector('span').innerHTML = `Lendo as contas: <b>${inteiro(e.lidas)}</b> de ${inteiro(e.ativas)}${falta}. ${texto}`;
+}
+
+/** Tempo para ler n contas no ritmo de agora: "menos de 1 min", "~25 min" ou "~1 h 20 min". */
+function tempoParaLer(n, porMinuto) {
+  const min = Math.round(n / porMinuto);
+  if (min < 1) return 'menos de 1 min';
+  if (min < 60) return `~${min} min`;
+  return `~${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}`;
 }
 
 /** Algum filtro que limita as contas? Lucro e ordem não contam: não dá para saber o lucro sem ler a conta. */
@@ -285,15 +297,15 @@ const FORA_DA_BUSCA = new Set(['codice', 'recompra']);
 // da lista e a aba Pesquisados seguem essa ordem. Ela não muda quem bate nem o preço por unidade (soma de todos).
 // As de "Tem pelo menos um" usam os mesmos campos, mas só filtram: não viram colunas nem entram no preço por unidade.
 function desenharCondicoes() {
-  $('#f-itens').innerHTML = S.filtros.itens.map(condicaoHtml).join('');
-  $('#f-algum').innerHTML = S.filtros.algum.map(condicaoHtml).join('');
+  $('#f-itens').innerHTML = S.filtros.itens.map((c, i) => condicaoHtml(c, i, true)).join('');
+  $('#f-algum').innerHTML = S.filtros.algum.map((c, i) => condicaoHtml(c, i, false)).join('');
   desenharOrdens();
 }
 
-function condicaoHtml(c, i) {
+function condicaoHtml(c, i, todos) {
   return `
     <div class="condicao" data-i="${i}">
-      <div class="condicao-topo">${tituloDaCondicao(c)}<button data-acao="remover" title="Remover"><svg class="ic"><use href="#i-x"/></svg></button></div>
+      <div class="condicao-topo">${tituloDaCondicao(c, todos)}<button data-acao="remover" title="Remover"><svg class="ic"><use href="#i-x"/></svg></button></div>
       <div class="condicao-campos">
         <select class="caixa" data-campo="refino_min" title="Refino mínimo">
           <option value="0">qualquer refino</option>${Array.from({ length: 15 }, (_, n) => `<option value="${n + 1}" ${c.refino_min === n + 1 ? 'selected' : ''}>refino ≥ +${n + 1}</option>`).join('')}
@@ -304,13 +316,16 @@ function condicaoHtml(c, i) {
     </div>`;
 }
 
-/** Ícone e nome da condição: o item, o texto do nome ou o grupo (com o nome e o número de itens de agora). */
-function tituloDaCondicao(c) {
+/** Ícone e nome da condição: o item, o texto do nome ou o grupo (com o nome e o número de itens de agora).
+ *  todos: a condição é do "Tem item", onde o grupo exige todos os itens dele. */
+function tituloDaCondicao(c, todos) {
   if (c.grupo_id != null) {
     const g = S.grupos.find(x => x.id === c.grupo_id);
+    const nome = esc(g?.nome ?? c.nome);
     return `<span class="icone-grupo" title="Grupo de itens"><svg class="ic"><use href="#i-list"/></svg></span>
-      <b title="Qualquer item do grupo ${esc(g?.nome ?? c.nome)}">${esc(g?.nome ?? c.nome)}</b>
-      <small>${g ? `${inteiro(g.itens.length)} ${g.itens.length === 1 ? 'item' : 'itens'}` : S.gruposCarregados ? 'grupo apagado' : ''}</small>`;
+      <b title="${todos ? `Todos os itens do grupo ${nome}` : `Qualquer item do grupo ${nome}`}">${nome}</b>
+      <small>${g ? `${todos && g.itens.length > 1 ? 'todos os ' : ''}${inteiro(g.itens.length)} ${g.itens.length === 1 ? 'item' : 'itens'}`
+        : S.gruposCarregados ? 'grupo apagado' : ''}</small>`;
   }
   if (c.item_id) return `<img src="${ICONE(c.item_id)}" alt="" ${SEM_IMG}><b title="${esc(c.nome)}">${esc(c.nome)}</b>`;
   return `<b title="Qualquer item com “${esc(c.nome)}” no nome">“${esc(c.nome)}” no nome</b>`;
@@ -414,7 +429,7 @@ function iniciarFiltros() {
     }, fechar, {
       titulo: q => `Buscar itens com “${q}” no nome`, sempre: true,
       nota: 'Vale também para itens que ainda não apareceram nas contas lidas; elas entram conforme forem lidas.',
-    }, true);
+    }, chave === 'itens' ? 'todos' : true);
     $(botao).addEventListener('click', () => {
       $(seletor).hidden = false;
       $(botao).hidden = true;
@@ -429,7 +444,8 @@ function iniciarFiltros() {
  *  porNome ({ titulo(texto), nota, sempre }) oferece usar o texto digitado, para itens que ainda não
  *  apareceram em nenhuma conta lida; com "sempre", a opção aparece mesmo quando há sugestões.
  *  comGrupos põe os grupos de itens antes dos itens (todos, com a caixa vazia); escolher um grupo
- *  devolve { grupo_id, nome, itens }. Com 'valor', a legenda do grupo é a da tabela de valores (vale para cada item). */
+ *  devolve { grupo_id, nome, itens }. Com 'valor', a legenda do grupo é a da tabela de valores (vale para cada item);
+ *  com 'todos', a do "Tem item" (precisa de todos os itens). */
 function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null, comGrupos = false) {
   const entrada = $('input', raiz);
   const lista = $('.sugestoes', raiz);
@@ -451,6 +467,7 @@ function seletorDeItem(raiz, aoEscolher, aoCancelar, porNome = null, comGrupos =
       <button class="sugestao ${i === destaque ? 'on' : ''}" data-i="${i}">
         ${grupo ? `<span class="icone-grupo"><svg class="ic"><use href="#i-list"/></svg></span>
           <div><b>${marcar(grupo.nome)}</b><small>${comGrupos === 'valor' ? descricaoItem({ grupo_id: grupo.id, itens: grupo.itens })
+            : comGrupos === 'todos' ? `Grupo · precisa de todos os ${inteiro(grupo.itens.length)} ${grupo.itens.length === 1 ? 'item' : 'itens'}`
             : `Grupo · qualquer um de ${inteiro(grupo.itens.length)} ${grupo.itens.length === 1 ? 'item' : 'itens'}`}</small></div>`
         : `<img src="${ICONE(item.item_id)}" alt="" ${SEM_IMG}>
           <div><b>${marcar(item.nome)}</b><small>${esc(descricaoItem(item))}</small></div>`}${i === destaque ? '<kbd>Enter</kbd>' : ''}

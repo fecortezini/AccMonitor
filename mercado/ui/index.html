@@ -74,7 +74,7 @@
         <div class="campo"><label for="f-ceu">Céu</label><select id="f-ceu" class="caixa"><option value="">Qualquer</option></select></div>
       </div>
       <div class="campo">
-        <label>Tem item</label>
+        <label title="A conta precisa ter todos estes itens. Um grupo aqui exige todos os itens dele, como as cartas de um combo.">Tem item</label>
         <div class="condicoes" id="f-itens"></div>
         <div class="seletor-item" id="novo-item" hidden>
           <div class="entrada"><svg class="ic"><use href="#i-search"/></svg><input placeholder="Digite o nome do item…" autocomplete="off"></div>
@@ -84,7 +84,7 @@
       </div>
       <div class="campo">
         <div class="campo-topo"><label class="rotulo" title="A conta precisa ter pelo menos um destes itens, qualquer um. Por exemplo, a arma de um rank, que tem um nome em cada classe.">Tem pelo menos um</label>
-          <button class="link fino" id="abrir-grupos" title="Criar e editar grupos de itens, como as armas de um rank"><svg class="ic"><use href="#i-list"/></svg>grupos</button></div>
+          <button class="link fino" id="abrir-grupos" title="Criar e editar grupos de itens, como as cartas de um combo ou as armas de um rank"><svg class="ic"><use href="#i-list"/></svg>grupos</button></div>
         <div class="condicoes" id="f-algum"></div>
         <div class="seletor-item" id="novo-algum" hidden>
           <div class="entrada"><svg class="ic"><use href="#i-search"/></svg><input placeholder="Digite o nome do item…" autocomplete="off"></div>
@@ -191,8 +191,8 @@
           <div class="passo" data-campo="intervalo_s" data-min="30" data-max="3600" data-passo="10" data-sufixo=" s"></div></div>
         <div class="opcao"><div><b>Pausa entre aberturas de contas</b><small>Menor carrega a base inicial mais rápido, mas pesa mais no site.</small></div>
           <div class="passo" data-campo="pausa_s" data-min="1" data-max="60" data-passo="1" data-sufixo=" s"></div></div>
-        <div class="opcao"><div><b>Contas lidas ao mesmo tempo</b><small>Com 2, a base inicial carrega em quase metade do tempo, mas o site recebe o dobro de acessos. Se ele recusar algum, volta sozinho para 1.</small></div>
-          <div class="passo" data-campo="leituras_simultaneas" data-min="1" data-max="2" data-passo="1"></div></div>
+        <div class="opcao"><div><b>Contas lidas ao mesmo tempo</b><small>De 1 a 8. Mais contas carregam a base inicial mais rápido, mas o site recebe mais acessos ao mesmo tempo. Se ele recusar algum, volta sozinho para 1.</small></div>
+          <div class="passo" data-campo="leituras_simultaneas" data-min="1" data-max="8" data-passo="1"></div></div>
       </div>
       <div class="secao">
         <div class="secao-titulo"><svg class="ic"><use href="#i-coins"/></svg>Cotações</div>
@@ -251,7 +251,7 @@
   <div class="modal" role="dialog" aria-labelledby="t-grupos">
     <div class="modal-topo"><h3 id="t-grupos">Grupos de itens</h3><button class="icone-btn sem-borda" data-fechar><svg class="ic"><use href="#i-x"/></svg></button></div>
     <div class="modal-corpo">
-      <p class="dim grupos-ajuda">Junte os itens que você busca juntos, como as armas de um rank, que têm um nome em cada classe. Na busca, escolha o grupo no “Tem item” ou no “Tem pelo menos um”: vale qualquer item dele.</p>
+      <p class="dim grupos-ajuda">Junte os itens que você busca juntos. No “Tem item”, a conta precisa ter todos os itens do grupo, como as cartas de um combo. No “Tem pelo menos um”, basta um deles, como a arma de um rank, que tem um nome em cada classe.</p>
       <div id="lista-grupos"></div>
     </div>
     <div class="modal-rodape"><button class="btn fantasma" id="novo-grupo"><svg class="ic"><use href="#i-plus"/></svg>Novo grupo</button><span class="espaco"></span><button class="btn primario" data-fechar>Fechar</button></div>

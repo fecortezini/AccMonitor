@@ -18,7 +18,7 @@ Para abrir, dê dois cliques em **`Mercado PW.bat`**. O programa abre numa janel
 
 ## Primeira vez
 
-1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva por volta de 1 h 45 com as configurações padrão, num ritmo que não sobrecarrega o site. Com a pausa de 1 s e 2 contas lidas ao mesmo tempo (⚙ Configurações), cai para uns 45 min. O que já foi lido fica salvo: se fechar no meio, ele continua de onde parou. A barra no topo mostra o progresso.
+1. **Carga inicial.** Assim que abre, o programa baixa a lista de anúncios e começa a ler, em segundo plano, os itens de cada conta. Cada conta é lida uma vez só. Com cerca de 1.500 anúncios, a carga inicial leva por volta de 1 h 45 com as configurações padrão, num ritmo que não sobrecarrega o site. Com a pausa de 1 s e 2 contas lidas ao mesmo tempo (⚙ Configurações), cai para uns 45 min. O que já foi lido fica salvo: se fechar no meio, ele continua de onde parou. A barra no topo mostra o progresso e quanto tempo falta, no ritmo dos últimos 5 minutos.
 2. **O que é lido primeiro:**
    - contas novas ou que baixaram de preço;
    - com **Ler primeiro as destes filtros** ligado (na barra do topo, aparece quando há filtros), as contas que podem bater com os filtros da aba Contas. Em itens que o site indexa (equipamentos), a busca do próprio site diz quais contas têm o item, e só essas sobem. Nos outros itens, como relíquias e materiais, sobem as que batem com os demais filtros (classe, preço, nível…). A barra mostra quantas faltam. Ao trocar os filtros, as da busca anterior voltam à ordem normal;
@@ -57,10 +57,10 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
   - **Campos:** cada item tem os mesmos campos do "Tem item" (refino, quantidade e onde).
   - **Onde aparece:** na aba **Pesquisados** dos detalhes, num grupo próprio, com o item que a conta tem, onde está e quantas unidades, e numa linha os que ela não tem. Na lista ele não vira coluna nem entra no Por un.
   - **Junto com os outros filtros:** vale com todos, inclusive o "Tem item", e também nas buscas salvas e nos avisos.
-- **Grupos de itens:** juntam itens que você busca juntos, como as armas de um rank.
+- **Grupos de itens:** juntam itens que você busca juntos, como as cartas de um combo ou as armas de um rank.
   - **Criar e editar:** pelo link **grupos**, ao lado do "Tem pelo menos um". Na janela você cria um grupo, dá um nome e adiciona os itens.
   - **Usar:** ao adicionar uma condição, no "Tem item" ou no "Tem pelo menos um", os grupos aparecem antes dos itens. Com a caixa vazia aparecem todos. Escolha o grupo em vez de pôr item por item.
-  - **Como vale na busca:** qualquer item do grupo atende à condição, com o mesmo refino mínimo, quantidade e onde.
+  - **Como vale na busca:** no "Tem item", a conta precisa ter **todos** os itens do grupo, cada um com o refino mínimo, a quantidade e o onde da condição. É o caso das cartas de um combo. No "Tem pelo menos um", basta **um** deles, como a arma de um rank. Para achar qualquer arma UP4, use o grupo no "Tem pelo menos um".
   - **Mudanças:** um grupo alterado passa a valer em todas as buscas salvas que o usam.
   - **No outro PC:** os grupos vão no `meus-dados.json`.
   - **Já criados:**
@@ -70,6 +70,9 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
     - **UP3:** as 34 armas ★★★ com Nível de Ataque +40.
     - **R8 UP3:** os sets ★★★ de Classe/Patente 8 das 17 classes (68 peças: peitoral, calça, botas e braçadeira), como a Brigandina do Oceano: Sol.
     - **R9 UP1**, **R9 UP2** e **R9 UP3:** as armaduras de R9 de cada fase (só peitoral, calça, botas e braçadeira). A fase vem da defesa da peça, que é fixa em cada uma, e não das estrelas: o Escárnio das Almas ★★★ é UP2, por exemplo. O UP3 é a série "digno de honra" (Adversidade, Apoteose, Réquiem...) e a das classes novas; nestas, as peças que nenhuma conta lida usava entraram por eliminação.
+    - **Combo Seis Soberanos** (combo A) e **Combo Portal de Nuema** (combo S): as 6 cartas de cada combo, uma de cada tipo. No "Tem item", acham as contas com o combo completo; com "equipado", só as que estão com as 6 cartas equipadas.
+    - **Runas Nv. 5+:** as 45 runas de nível 5 a 10 das 5 cores (Áurea, Argêntea, Celeste, Escarlate e Verdejante), inclusive as variantes "Nv. 5", "Nível 7" e "Nível 8" com outro id. Use no **"Tem pelo menos um"**: no "Tem item" ele exigiria as 45. Com quantidade, como "3×", acha as contas com pelo menos 3 runas dessas. A busca do site não conhece runas, então só aparecem as contas já lidas.
+    - **Runas Nv. 10:** só as 5 runas de nível 10, uma de cada cor. Também é para o "Tem pelo menos um".
 - **Lista:** ordenada por lucro, em R$ ou %, com a marca **NOVA** para contas das últimas 24 h. Embaixo do preço aparece, pequeno, o lance mínimo que o site aceita: 70% do preço pedido (também nos detalhes).
 - **Lances recebidos:** embaixo do mínimo aparece o maior lance que a conta já recebeu, como "lance 1.296" ou "lance 885 · 2" com dois lances. É o mesmo "Lances pendentes" que o site mostra ao clicar em Fazer lance, sem precisar de login. Um lance novo (dos últimos 30 min) fica verde, com ▲.
   - **As 50 primeiras contas da busca e a conta aberta:** os lances são relidos a cada 1 min, ou mais espaçado se forem muitas, até 10 páginas por minuto. Serve para acompanhar se alguém deu lance numa conta que você quer.
@@ -107,7 +110,7 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
 |---|---|
 | Intervalo de consulta | De quanto em quanto tempo a lista é consultada. Padrão 60 s, mínimo 30 s. |
 | Pausa entre contas | Intervalo entre a leitura de uma conta e a próxima. Padrão 2 s, mínimo 1 s. |
-| Contas lidas ao mesmo tempo | 1 (padrão) ou 2. Com 2, a carga inicial leva ~40% menos tempo, mas o site recebe o dobro de acessos. Se ele recusar algum (HTTP 403, 429 ou 503), o programa volta sozinho para 1 e avisa no topo. |
+| Contas lidas ao mesmo tempo | De 1 (padrão) a 8. Com 2, a carga inicial leva ~40% menos tempo, mas o site recebe o dobro de acessos; acima disso, mais ainda. Se ele recusar algum (HTTP 403, 429 ou 503), o programa volta sozinho para 1 e avisa no topo com quantas contas estava lendo. |
 | Cotações | Quanto vale 1 bi e 1 TCC em reais. Padrão: 1 bi = R$ 500 e 1 TCC = R$ 1. |
 | Avisos | Notificação do Windows (clicar abre o anúncio para comprar), bipes (tocam mesmo com o "Não perturbe" ligado, por exemplo durante o jogo), abrir no navegador, Telegram e Discord (estes dois ficam só no PC em que foram configurados). O botão "Testar avisos" confere se estão funcionando. |
 

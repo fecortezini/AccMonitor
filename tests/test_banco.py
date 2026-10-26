@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mercado import site
+from mercado import site, valor
 from mercado.banco import Banco
 from tests import paginas
 
@@ -271,14 +271,37 @@ class Grupos(BaseBanco):
         self.banco.apagar_grupo(self.gid)
         self.assertEqual(self.banco.grupos(), [])
 
-    def test_grupo_vale_para_qualquer_item_dele(self):
+    def test_no_tem_pelo_menos_um_vale_qualquer_item_do_grupo(self):
         grupo = {'grupo_id': self.gid, 'nome': 'Armas do rank'}
         self.assertEqual(self.ids({'algum': [grupo]}), [45520, 231216])
-        self.assertEqual(self.ids({'itens': [grupo]}), [45520, 231216])
-        self.assertEqual(self.ids({'itens': [{**grupo, 'refino_min': 12}]}), [231216])  # só o Cosmos +12
-        self.assertEqual(self.ids({'itens': [grupo], 'classes': ['Arqueiro']}), [45520])
-        r = self.banco.buscar({'itens': [grupo]})
-        self.assertEqual((r['busca_itens'][0]['itens'], r['busca_itens'][0]['nome']), ([COSMOS, self.so_45520], 'Armas do rank'))
+        self.assertEqual(self.ids({'algum': [{**grupo, 'refino_min': 12}]}), [231216])  # só o Cosmos +12
+        self.assertEqual(self.ids({'algum': [grupo], 'classes': ['Arqueiro']}), [45520])
+        r = self.banco.buscar({'algum': [grupo]})
+        self.assertEqual((r['busca_algum'][0]['itens'], r['busca_algum'][0]['nome'], r['busca_algum'][0]['todos']),
+                         ([COSMOS, self.so_45520], 'Armas do rank', False))
+
+    def test_no_tem_item_o_grupo_precisa_de_todos(self):
+        """Como as cartas de um combo: a conta precisa ter cada item do grupo, e cada um na quantidade pedida."""
+        unidades = {}  # rid -> {item_id: unidades}, só das seções que a busca olha
+        for rid, itens in self.itens.items():
+            for it in itens:
+                if it.item_id and it.secao not in valor.SECOES_FORA:
+                    unidades.setdefault(rid, {}).setdefault(it.item_id, 0)
+                    unidades[rid][it.item_id] += it.qtd
+        so_45520 = sorted(set(unidades[45520]) - set(unidades[231216]))
+        so_231216 = min(set(unidades[231216]) - set(unidades[45520]))
+        combo = self.banco.salvar_grupo({'nome': 'Combo', 'itens': [{'item_id': i} for i in so_45520[:2]]})
+        metade = self.banco.salvar_grupo({'nome': 'Metade', 'itens': [{'item_id': so_45520[0]}, {'item_id': so_231216}]})
+        cond = {'grupo_id': combo, 'nome': 'Combo'}
+        self.assertEqual(self.ids({'itens': [cond]}), [45520])
+        self.assertEqual(self.ids({'itens': [{'grupo_id': metade, 'nome': 'Metade'}]}), [])  # nenhuma tem os dois
+        self.assertEqual(self.ids({'algum': [{'grupo_id': metade, 'nome': 'Metade'}]}), [45520, 231216])
+        r = self.banco.buscar({'itens': [cond]})
+        self.assertEqual((r['busca_itens'][0]['itens'], r['busca_itens'][0]['todos']), (so_45520[:2], True))
+        menor = min(unidades[45520][i] for i in so_45520[:2])
+        self.assertEqual(r['contas'][0]['qtd_busca'], [sum(unidades[45520][i] for i in so_45520[:2])])
+        self.assertEqual(self.ids({'itens': [{**cond, 'qtd_min': menor}]}), [45520])
+        self.assertEqual(self.ids({'itens': [{**cond, 'qtd_min': menor + 1}]}), [])
 
     def test_grupo_apagado_nao_acha_nada(self):
         self.banco.apagar_grupo(self.gid)
@@ -366,9 +389,9 @@ class Outros(BaseBanco):
     def test_config_com_limites(self):
         self.assertEqual(self.banco.config()['leituras_simultaneas'], 1)
         cfg = self.banco.salvar_config({'intervalo_s': 5, 'rs_por_tcc': '0,85', 'aviso_bipes': False, 'x': 1,
-                                        'leituras_simultaneas': 5})
+                                        'leituras_simultaneas': 50})
         self.assertEqual((cfg['intervalo_s'], cfg['rs_por_tcc'], cfg['aviso_bipes'], cfg['leituras_simultaneas']),
-                         (30, 0.85, False, 2))
+                         (30, 0.85, False, 8))
         self.assertNotIn('x', cfg)
 
     def test_buscas_e_avisos(self):
