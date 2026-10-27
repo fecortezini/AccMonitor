@@ -4,7 +4,7 @@
     "intervalo_s": 60,
     "pausa_s": 2,
     "leituras_simultaneas": 2,
-    "rs_por_bi": 400.0,
+    "rs_por_bi": 350.0,
     "rs_por_tcc": 1.0,
     "aviso_windows": true,
     "aviso_bipes": true,
