@@ -52,6 +52,9 @@ class App:
             ('POST', r'/api/grupos', self.criar_grupo),
             ('PUT', r'/api/grupos/(\d+)', self.editar_grupo),
             ('DELETE', r'/api/grupos/(\d+)', self.apagar_grupo),
+            ('GET', r'/api/favoritas', self.favoritas),
+            ('POST', r'/api/favoritas/(\d+)', self.marcar_favorita),
+            ('DELETE', r'/api/favoritas/(\d+)', self.desmarcar_favorita),
             ('GET', r'/api/avisos', self.avisos),
             ('GET', r'/api/config', self.config),
             ('PUT', r'/api/config', self.salvar_config),
@@ -72,7 +75,7 @@ class App:
         return {**self.estado.como_dict(), **self.banco.contagem(), 'erro': self.banco.erro_dados or self.estado.erro,
                 'agora': datetime.now().isoformat(timespec='seconds'),
                 'rs_por_bi': cfg['rs_por_bi'], 'rs_por_tcc': cfg['rs_por_tcc'], 'intervalo_s': cfg['intervalo_s'],
-                'dados_a_enviar': self.banco.dados_a_enviar()}
+                'dados_a_enviar': self.banco.dados_a_enviar(), 'n_favoritas': len(self.banco.ids_favoritas())}
 
     def buscar(self, q, corpo):
         corpo = corpo or {}
@@ -160,6 +163,20 @@ class App:
         """As buscas que usam o grupo mudam: a lista recarrega, e as contas com os itens dele sobem na fila."""
         self.estado.mudou()
         self.coletor.repriorizar()
+
+    def favoritas(self, q, corpo):
+        return {'favoritas': self.banco.favoritas()}
+
+    def marcar_favorita(self, q, corpo, rid):
+        self.banco.marcar_favorita(int(rid))
+        self.estado.mudou()
+        self.coletor.favoritas_mudaram()
+        return {}
+
+    def desmarcar_favorita(self, q, corpo, rid):
+        self.banco.desmarcar_favorita(int(rid))
+        self.estado.mudou()
+        return {}
 
     def avisos(self, q, corpo):
         return {'avisos': self.banco.avisos()}

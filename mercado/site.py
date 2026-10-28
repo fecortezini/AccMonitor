@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime
 from html.parser import HTMLParser
 
 SITE = 'https://marketplace.theclassic.games'
@@ -22,6 +23,8 @@ URL_LISTA = f'{SITE}/pw187'
 URL_CONTA = SITE + '/pw187/details/{}'
 URL_CATALOGO = f'{SITE}/pw187/advanced_item_list'
 URL_BUSCA = f'{SITE}/pw187/advanced_filter'
+URL_HISTORICO = f'{SITE}/history'
+URL_VENDA = SITE + '/pw187/vendida/{}'
 USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
               '(KHTML, like Gecko) Chrome/128.0 Safari/537.36')
 COSMOS_ID = 72573
@@ -407,6 +410,72 @@ def ler_lance(pagina):
         return {'pendentes': int(dados['pending']), 'maior': int(dados['highest'])}
     except KeyError:
         return None
+
+
+# ------------------------------------------------------------------ histórico de vendas
+
+@dataclass
+class Venda:
+    venda: int          # número da venda no site (não é o id da conta: esse só a página da venda mostra)
+    nome: str
+    preco: int
+    quando: datetime    # horário de Brasília, sem os segundos
+
+
+def _tcc(texto):
+    """'1.739' -> 1739"""
+    return int(texto.replace('.', ''))
+
+
+def _data(texto):
+    return datetime.strptime(texto, '%d/%m/%Y %H:%M')
+
+
+def url_historico(nome):
+    """Vendas de contas do PW 1.8.7 com esse nome nos últimos 90 dias, as mais recentes primeiro."""
+    return URL_HISTORICO + '?' + urllib.parse.urlencode({'game': 'pw187', 'q': nome, 'period': 90, 'sort': 'recent'})
+
+
+def ler_historico(pagina):
+    """[Venda] da parte "Contas vendidas" do histórico, na ordem da página.
+
+    O q do histórico pode trazer outros nomes parecidos: quem usa confere o nome. ValueError se a página
+    não tiver essa parte: o site mudou, e "nenhuma venda" seria uma conclusão errada.
+    """
+    inicio = pagina.find('id="mkh-panel-contas"')
+    if inicio < 0:
+        raise ValueError('o histórico do site mudou: não achei a parte "Contas vendidas"')
+    fim = pagina.find('id="mkh-panel-', inicio + 1)
+    vendas = []
+    for bloco in pagina[inicio:fim if fim > 0 else None].split('<article class="mkh-row mkh-row--link"')[1:]:
+        venda = re.search(r'/vendida/(\d+)"', bloco)
+        nome = re.search(r'class="mkh-row__name">(.*?)</strong>', bloco, re.S)
+        preco = re.search(r'class="mkh-row__price">\s*([\d.]+) TCC', bloco)
+        quando = re.search(r'class="mkh-row__date">\s*(\d{2}/\d{2}/\d{4} \d{2}:\d{2})', bloco)
+        if venda and nome and preco and quando:
+            vendas.append(Venda(venda=int(venda.group(1)), nome=html.unescape(re.sub(r'<[^>]+>', '', nome.group(1))).strip(),
+                                preco=_tcc(preco.group(1)), quando=_data(quando.group(1))))
+    return vendas
+
+
+def ler_venda(pagina):
+    """A página de uma conta vendida: {'id', 'preco', 'anunciada', 'lance', 'quando'}.
+
+    O id é o da conta (roleid). Numa venda por lance o site diz "foi anunciada por N TCC e fechada por lance
+    aceito"; numa venda direta não diz nada, e a anunciada fica o próprio preço. ValueError se a página não
+    tiver o id da conta ou a venda.
+    """
+    rid = re.search(r'class="power">\s*<span>ID</span>\s*<strong>(\d+)</strong>', pagina)
+    venda = re.search(r'class="mkt-sold__price">\s*Vendida em\s*(\d{2}/\d{2}/\d{4} \d{2}:\d{2})\s*<strong>([\d.]+) TCC',
+                      pagina)
+    if not rid or not venda:
+        raise ValueError('a página da venda mudou: não achei o id da conta ou o preço')
+    nota = re.search(r'class="mkt-sold__note">(.*?)</p>', pagina, re.S)
+    nota = html.unescape(nota.group(1)) if nota else ''
+    anunciada = re.search(r'anunciada por ([\d.]+) TCC', nota)
+    preco = _tcc(venda.group(2))
+    return {'id': int(rid.group(1)), 'preco': preco, 'anunciada': _tcc(anunciada.group(1)) if anunciada else preco,
+            'lance': 'lance aceito' in nota, 'quando': _data(venda.group(1))}
 
 
 # ------------------------------------------------------------------ catálogo e busca do site

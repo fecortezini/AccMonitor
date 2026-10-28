@@ -21,6 +21,7 @@ class SiteFalso:
     """Imita mercado.site sem rede: a lista e as contas vêm das páginas salvas."""
     URL_LISTA = 'lista'
     URL_CONTA = 'conta/{}'
+    URL_VENDA = 'venda/{}'
     COSMOS_ID = COSMOS
 
     def __init__(self):
@@ -35,6 +36,10 @@ class SiteFalso:
         self.demora = 0             # segundos de cada download
         self.baixando = self.max_baixando = 0
         self._trava = threading.Lock()
+        self.vendas = []            # o que a busca no histórico de vendas devolve: [site.Venda]
+        self.paginas_venda = {}     # número da venda -> o que a página dela diz (como site.ler_venda)
+        self.historicos = []        # nomes buscados no histórico
+        self.vendas_abertas = []    # números das vendas cuja página foi aberta
 
     def baixar(self, url):
         if self.fora_do_ar:
@@ -66,6 +71,18 @@ class SiteFalso:
     def busca_site(self, item_ids, cosmos_min=None):
         self.buscas.append((tuple(item_ids), cosmos_min))
         return set(self.site_ids)
+
+    def url_historico(self, nome):
+        return f'historico/{nome}'
+
+    def ler_historico(self, url):
+        self.historicos.append(url.split('/', 1)[1])
+        return list(self.vendas)
+
+    def ler_venda(self, url):
+        numero = int(url.split('/')[1])
+        self.vendas_abertas.append(numero)
+        return dict(self.paginas_venda[numero])
 
 
 class BaseColetor(unittest.TestCase):
@@ -410,6 +427,183 @@ class Avisos(BaseColetor):
         self.site.busca_site = lambda ids, cosmos_min=None: set().union(*(por_item[i] for i in ids))  # o site junta com OU
         self.assertEqual(self.coletor.ids_do_site({'grupo_id': 1, 'itens': [COSMOS, 777, 38154], 'todos': True}), {3152})
         self.assertEqual(self.coletor.ids_do_site({'grupo_id': 1, 'itens': [COSMOS, 777], 'todos': False}), {231216, 3152, 45520})
+
+
+class Favoritas(BaseColetor):
+    """Favoritas: sumiu da lista -> aviso, busca no histórico de vendas -> vendida (e esquecida) ou retirada."""
+
+    def setUp(self):
+        super().setUp()
+        espera = mock.patch.object(self.coletor._parar, 'wait')  # a pausa entre as páginas do histórico
+        espera.start()
+        self.addCleanup(espera.stop)
+        self.banco.marcar_favorita(231216)  # TooSadToDie, Bárbaro 105, 15.000 TCC
+
+    def tirar_do_ar(self, rid=231216):
+        anuncio = self.site.anuncios.pop(rid)
+        self.coletor.consultar_lista()
+        return anuncio
+
+    def vendida(self, numero=47999, rid=231216, nome='TooSadToDie', preco=12000, anunciada=15000, lance=True, quando=None):
+        quando = quando or datetime.now().replace(second=0, microsecond=0)
+        self.site.vendas.append(site.Venda(venda=numero, nome=nome, preco=preco, quando=quando))
+        self.site.paginas_venda[numero] = {'id': rid, 'preco': preco, 'anunciada': anunciada, 'lance': lance,
+                                           'quando': quando}
+
+    def buscar_na_hora(self):
+        """A próxima busca no histórico, sem esperar a hora marcada."""
+        self.banco.con.execute("UPDATE situacao_favoritas SET proxima_em = '2000-01-01T00:00:00' "
+                               "WHERE situacao = 'confirmando'")
+        self.coletor.buscar_venda(self.banco.buscas_de_venda()[0])
+
+    def test_vendida_avisa_e_esquece_a_conta(self):
+        self.tirar_do_ar()
+        self.assertEqual(self.avisos[0][:3], ('★ TooSadToDie', 'Saiu do mercado, conferindo se foi vendida…', 'Bárbaro 105'))
+        s = self.banco.situacao_favorita(231216)
+        self.assertEqual(s['situacao'], 'confirmando')
+        self.assertEqual(datetime.fromisoformat(s['proxima_em']) - datetime.fromisoformat(s['sumiu_em']), timedelta(minutes=1))
+        self.assertEqual(self.banco.buscas_de_venda(), [])  # só daqui a 1 min
+        self.vendida()
+        self.buscar_na_hora()
+        self.assertEqual(self.site.historicos, ['TooSadToDie'])
+        titulo, linha1, linha2, texto, url = self.avisos[1]
+        self.assertEqual((titulo, linha1, linha2, url), ('★ TooSadToDie', 'Vendida por 12.000 TCC (anunciada por 15.000 TCC, '
+                                                         'lance aceito)', 'Bárbaro 105', 'venda/47999'))
+        self.assertIn('★ Favorita', texto)
+        self.assertEqual(self.banco.ids_favoritas(), set())
+        self.assertIsNone(self.banco.situacao_favorita(231216))
+        self.assertEqual(self.banco.conta(231216)['itens'], [])
+        self.assertEqual([(a['evento'], a['preco']) for a in self.banco.avisos()], [('vendida', 12000), ('saiu', 15000)])
+
+    def test_venda_direta(self):
+        self.tirar_do_ar()
+        self.vendida(preco=15000, lance=False)
+        self.buscar_na_hora()
+        self.assertEqual(self.avisos[1][1], 'Vendida por 15.000 TCC (pelo preço anunciado)')
+
+    def test_sem_venda_em_tres_buscas_e_retirada(self):
+        self.tirar_do_ar()
+        sumiu = datetime.fromisoformat(self.banco.situacao_favorita(231216)['sumiu_em'])
+        self.buscar_na_hora()
+        s = self.banco.situacao_favorita(231216)
+        self.assertEqual((s['situacao'], s['tentativas'], s['proxima_em']), ('confirmando', 1, (sumiu + timedelta(minutes=3)).isoformat()))
+        self.buscar_na_hora()
+        s = self.banco.situacao_favorita(231216)
+        self.assertEqual((s['tentativas'], s['proxima_em']), (2, (sumiu + timedelta(minutes=10)).isoformat()))
+        self.buscar_na_hora()
+        self.assertEqual(self.banco.situacao_favorita(231216)['situacao'], 'retirada')
+        self.assertEqual(len(self.site.historicos), 3)
+        self.assertEqual(self.avisos[-1][1], 'Saiu do mercado sem venda')
+        self.assertEqual(self.banco.ids_favoritas(), {231216})  # retirada continua favorita
+        self.assertIsNone(self.banco.proxima_busca_de_venda())
+
+    def test_falha_de_conexao_nao_conta_como_busca(self):
+        self.tirar_do_ar()
+        self.site.fora_do_ar = True
+        with self.assertLogs('mercado', 'WARNING'):
+            self.buscar_na_hora()
+        s = self.banco.situacao_favorita(231216)
+        self.assertEqual((s['situacao'], s['tentativas']), ('confirmando', 0))
+        self.assertGreater(datetime.fromisoformat(s['proxima_em']), datetime.now() + timedelta(seconds=100))
+        self.assertEqual(len(self.avisos), 1)  # só o "saiu"
+
+    def test_pagina_de_venda_que_mudou_nao_conta_como_busca(self):
+        self.tirar_do_ar()
+        self.vendida()
+        del self.site.paginas_venda[47999]  # ler_venda falha (KeyError), como uma página sem o id
+        with self.assertLogs('mercado', 'WARNING'):
+            self.buscar_na_hora()
+        self.assertEqual(self.banco.situacao_favorita(231216)['tentativas'], 0)
+
+    def test_venda_de_outra_conta_com_o_mesmo_nome(self):
+        self.tirar_do_ar()
+        self.vendida(numero=48001, rid=999)  # mais recente, mas de outra conta
+        self.vendida(numero=48000)
+        self.buscar_na_hora()
+        self.assertEqual(self.site.vendas_abertas, [48001, 48000])
+        self.assertEqual(self.avisos[1][3].count('venda/48000'), 1)
+
+    def test_venda_antiga_ou_de_nome_parecido_e_ignorada(self):
+        self.tirar_do_ar()
+        visto = datetime.fromisoformat(self.banco.situacao_favorita(231216)['visto_antes'])
+        self.vendida(numero=47000, quando=visto - timedelta(minutes=6))  # antes de ela ser vista pela última vez
+        self.vendida(numero=47001, nome='TooSadToDie2')
+        self.buscar_na_hora()
+        self.assertEqual(self.site.vendas_abertas, [])
+        self.assertEqual(self.banco.situacao_favorita(231216)['tentativas'], 1)
+
+    def test_baixou_de_preco(self):
+        self.site.anuncios[231216] = dataclasses.replace(self.site.anuncios[231216], preco=12000)
+        self.coletor.consultar_lista()
+        self.assertEqual([a[1] for a in self.avisos if a[0].startswith('★')], ['Baixou de 15.000 TCC para 12.000 TCC'])
+
+    def test_voltou_ao_mercado_depois_de_retirada(self):
+        anuncio = self.tirar_do_ar()
+        self.banco.definir_situacao(231216, 'retirada')
+        self.site.anuncios[231216] = dataclasses.replace(anuncio, preco=14000)
+        self.coletor.consultar_lista()
+        self.assertEqual(self.avisos[-1][1], 'Anunciada de novo por 14.000 TCC')
+        self.assertEqual(self.banco.situacao_favorita(231216)['situacao'], 'a_venda')
+
+    def test_voltou_enquanto_conferia_cancela_as_buscas(self):
+        anuncio = self.tirar_do_ar()
+        self.site.anuncios[231216] = anuncio
+        self.coletor.consultar_lista()
+        self.assertEqual(self.banco.situacao_favorita(231216)['situacao'], 'a_venda')
+        self.assertIsNone(self.banco.proxima_busca_de_venda())
+
+    def test_ao_abrir_o_programa_nao_avisa_a_saida(self):
+        self.site.anuncios.pop(231216)  # saiu com o programa fechado
+        coletor = Coletor(self.banco, Estado(), site=self.site, notificar=lambda cfg, *args: self.avisos.append(args))
+        coletor.consultar_lista()
+        self.assertEqual(self.avisos, [])
+        self.assertEqual(self.banco.situacao_favorita(231216)['situacao'], 'confirmando')
+
+    def test_favorita_que_este_pc_nunca_viu(self):
+        self.banco.con.execute("INSERT INTO favoritas VALUES (555, 'DeOutroPC', '2026-10-28T09:00:00', '2026-10-28T09:00:00')")
+        self.coletor.consultar_lista()
+        s = self.banco.situacao_favorita(555)
+        self.assertEqual((s['situacao'], s['visto_antes']), ('confirmando', '2026-10-28T09:00:00'))
+        self.buscar_na_hora()
+        self.assertEqual(self.site.historicos, ['DeOutroPC'])
+
+    def test_meus_dados_com_erro_tenta_esquecer_de_novo(self):
+        self.tirar_do_ar()
+        self.vendida()
+        with mock.patch.object(self.banco, 'esquecer_vendida', side_effect=ValueError('arquivo com conflito')), \
+                self.assertLogs('mercado', 'WARNING'):
+            self.buscar_na_hora()
+        self.assertEqual(self.banco.situacao_favorita(231216)['situacao'], 'vendida')
+        self.coletor.consultar_lista()  # o arquivo voltou a aceitar mudanças
+        self.assertEqual(self.banco.ids_favoritas(), set())
+        self.assertEqual(sum(a[1].startswith('Vendida') for a in self.avisos), 1)  # avisada uma vez só
+
+    def test_lance_novo_numa_favorita(self):
+        self.coletor.ler_lance(231216)  # a primeira vez é a base
+        self.banco.con.execute("UPDATE anuncios SET lances_em = '2000-01-01T00:00:00' WHERE id = 231216")
+        self.site.lances[231216] = {'pendentes': 1, 'maior': 11000}
+        self.coletor.ler_lance(231216)
+        self.assertEqual(self.avisos[-1][:2], ('★ TooSadToDie', 'Lance novo: 1 lance, o maior de 11.000 TCC'))
+
+    def test_lance_novo_em_conta_que_nao_e_favorita_nao_avisa(self):
+        self.coletor.ler_lance(45520)
+        self.banco.con.execute("UPDATE anuncios SET lances_em = '2000-01-01T00:00:00' WHERE id = 45520")
+        self.site.lances[45520] = {'pendentes': 2, 'maior': 1900}
+        self.coletor.ler_lance(45520)
+        self.assertEqual(self.avisos, [])
+
+    def test_lances_das_favoritas_de_perto(self):
+        self.coletor.acompanhar([45520])
+        self.assertEqual(self.coletor._lance_a_ler(), (231216, False))  # antes das contas da tela
+
+    def test_a_busca_na_hora_passa_na_frente_da_fila(self):
+        self.tirar_do_ar()
+        self.coletor.fila.colocar(45520, ALTA)
+        self.banco.con.execute("UPDATE situacao_favoritas SET proxima_em = '2000-01-01T00:00:00'")
+        self.coletor._ultimo_detalhe = 0
+        self.coletor._proxima_lista = time.monotonic() + 999
+        self.coletor.passo()
+        self.assertEqual((self.site.historicos, self.site.lidas), (['TooSadToDie'], []))
 
 
 if __name__ == '__main__':

@@ -112,7 +112,7 @@ const S = {
   config: null, filtros: { ...structuredClone(FILTROS_PADRAO), ...lembrar('filtros', {}) },  // cópia: "Limpar" volta ao padrão
   resultado: null, limite: 300, sel: null, conta: null, subAba: null,
   valores: [], resumo: null, form: null, confirmando: null,
-  buscas: [], avisos: [], buscaAtual: lembrar('buscaAtual', null), grupos: [],
+  buscas: [], avisos: [], buscaAtual: lembrar('buscaAtual', null), grupos: [], favoritas: [],
   classesDesenhadas: '', ceusDesenhados: '',
   lerPrimeiro: lembrar('lerPrimeiro', true),  // "Ler primeiro as destes filtros", na barra de leitura
 };
@@ -164,6 +164,8 @@ async function atualizarEstado() {
 
 function desenharTopo(e) {
   $('#n-contas').textContent = inteiro(e.ativas);
+  $('#n-favoritas').hidden = !e.n_favoritas;
+  $('#n-favoritas').textContent = inteiro(e.n_favoritas);
   $('#c-bi').textContent = `R$ ${decimal(e.rs_por_bi)}`;
   $('#c-tcc').textContent = `R$ ${decimal(e.rs_por_tcc)}`;
   const st = $('#status');
@@ -232,6 +234,7 @@ const recarregarVista = debounce(() => {
   if (S.aba === 'contas') buscar().then(recarregarDetalhesSeMudou);
   if (S.aba === 'valores') carregarValores();
   if (S.aba === 'buscas') carregarBuscas();
+  if (S.aba === 'favoritas') carregarFavoritas();
   S.versaoCarregada[S.aba] = S.versao;
 }, 700);
 
@@ -240,12 +243,17 @@ function trocarAba(aba) {
   history.replaceState(null, '', aba === 'contas' ? location.pathname : `#${aba}`);
   $$('.aba').forEach(b => b.classList.toggle('on', b.dataset.aba === aba));
   $$('.vista').forEach(v => v.classList.toggle('on', v.id === `v-${aba}`));
+  // o painel de detalhes é um só: vai para a aba que mostra contas (o fim da vista é o lugar dele nas duas)
+  if (aba === 'contas' || aba === 'favoritas') $(`#v-${aba}`).append($('#detalhes'));
   fecharBalao();
   if (S.versaoCarregada[aba] !== S.versao) {
     S.versaoCarregada[aba] = S.versao;
     if (aba === 'contas') buscar();
     if (aba === 'valores') carregarValores();
     if (aba === 'buscas') carregarBuscas();
+    if (aba === 'favoritas') carregarFavoritas();
+  } else if (aba === 'favoritas') {
+    selecionarFavorita();
   }
 }
 
@@ -677,6 +685,7 @@ function desenharLista() {
     lucro: casasReais(visiveis.map(c => c.lucro_rs)) };
   $('#linhas').innerHTML = visiveis.map(c => `
     <tr data-id="${c.id}" class="${c.id === S.sel ? 'sel' : ''}">
+      <td class="col-estrela">${estrelaHtml(c.id, c.favorita)}</td>
       <td class="conta"><div><span class="nome">${esc(c.nome)}</span>${c.nova ? '<span class="selo nova">NOVA</span>' : ''}${c.a_confirmar ? '<span class="selo confirmar" title="A busca do site diz que tem o item; confirma quando a conta for lida">A CONFIRMAR</span>' : ''}</div>${!c.lida && !c.a_confirmar ? '<span class="sub">itens ainda não lidos</span>' : ''}</td>
       <td><img class="icone-classe" src="${CLASSE(c.ocupacao)}" alt="" ${SEM_IMG}>${esc(c.classe)} ${c.nivel}</td>
       <td class="extra">${esc(c.ceu)}</td>
@@ -700,6 +709,8 @@ function desenharLista() {
 
 function iniciarLista() {
   $('#linhas').addEventListener('click', e => {
+    const estrela = e.target.closest('[data-estrela]');
+    if (estrela) { alternarFavorita(Number(estrela.dataset.estrela), estrela.classList.contains('on')); return; }
     const tr = e.target.closest('tr[data-id]');
     if (tr) selecionar(Number(tr.dataset.id));
   });
@@ -727,7 +738,7 @@ function iniciarLista() {
 let detSeq = 0;
 async function selecionar(id, rolar = false) {
   S.sel = id;
-  $$('#linhas tr').forEach(tr => tr.classList.toggle('sel', Number(tr.dataset.id) === id));
+  $$('#linhas tr, #linhas-fav tr').forEach(tr => tr.classList.toggle('sel', Number(tr.dataset.id) === id));
   if (rolar) $(`#linhas tr[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest' });
   fecharBalao();
   const meu = ++detSeq;
@@ -780,7 +791,9 @@ function desenharDetalhes() {
       </div>`).join('')
     : `<div class="dim">${a.lida ? 'Nenhum item desta conta está na sua tabela de valores. Clique num item acima para dar um valor a ele.' : 'O valor aparece quando os itens forem lidos.'}</div>`;
   let conteudo;
-  if (!a.lida) {
+  if (!a.lida && !a.ativo) {  // fora do ar o coletor não lê mais a conta
+    conteudo = '<div class="aguardando"><b>Itens não lidos</b><span>Ela saiu do ar antes de o programa ler os itens.</span></div>';
+  } else if (!a.lida) {
     conteudo = `<div class="aguardando"><b>Itens ainda não lidos</b>
       <span>${d.na_fila || S.estado?.lendo === a.id ? 'Esta conta está na fila de leitura.' : 'O programa ainda vai chegar nesta conta.'} Se quiser, passe ela na frente.</span>
       <div><button class="btn fantasma pequeno" id="ler-agora"><svg class="ic"><use href="#i-play"/></svg>Ler agora</button></div></div>`;
@@ -804,9 +817,10 @@ function desenharDetalhes() {
         <img src="${CLASSE(a.ocupacao)}" alt="" ${SEM_IMG}>
         <div><h2>${esc(a.nome)}${a.nova ? '<span class="selo nova">NOVA</span>' : ''}</h2>
           <small>${esc(a.classe)} · nível ${a.nivel}${a.ceu ? ' · Céu ' + esc(a.ceu) : ''} · visto ${ha(a.primeiro_visto)}</small></div>
+        <button class="btn pequeno fantasma favoritar${d.favorita ? ' on' : ''}" id="favoritar" title="${d.favorita ? 'Clique para desmarcar' : TITULO_FAVORITAR}"><svg class="ic"><use href="#i-star"/></svg>${d.favorita ? 'Favorita' : 'Favoritar'}</button>
         <button class="icone-btn pequeno" id="recolher" title="Recolher detalhes"><svg class="ic"><use href="#i-right"/></svg></button>
       </div>
-      ${a.ativo ? '' : '<div class="aguardando"><b>Este anúncio saiu do ar</b><span>Provavelmente foi vendido ou removido.</span></div>'}
+      ${saiuDoArHtml(d)}
       <div class="dinheiro-grade">
         <div><span>Preço</span><b>${inteiro(a.preco)} TCC</b><small>= ${reais(a.preco_rs)}</small>
           <small title="Lance mínimo: o site aceita lances a partir de ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(a.preco))}</small>
@@ -823,6 +837,24 @@ function desenharDetalhes() {
       <div class="rotulo">De onde vem o valor</div>
       <div class="origem">${origem}</div>
     </div>`;
+}
+
+/** Quadro dos detalhes de uma conta que saiu do ar; numa favorita, o que o programa já sabe (seção 4 do desenho das favoritas). */
+function saiuDoArHtml(d) {
+  const a = d.anuncio, s = d.situacao;
+  if (a.ativo) return '';
+  if (!d.favorita || !s) return '<div class="aguardando"><b>Este anúncio saiu do ar</b><span>Provavelmente foi vendido ou removido.</span></div>';
+  if (s.situacao === 'confirmando') {
+    return `<div class="aguardando confirmando"><b>Saiu do mercado ${s.sumiu_em ? quando(s.sumiu_em) : ''}</b>`
+      + `<span>Conferindo no histórico de vendas do site se foi vendida (${s.tentativas} de 3 buscas feitas). `
+      + 'Se foi, você é avisado e ela sai das favoritas.</span></div>';
+  }
+  if (s.situacao === 'vendida') {
+    return '<div class="aguardando"><b>Vendida</b><span>Não consegui tirar das favoritas porque o meus-dados.json está com erro. '
+      + 'Ela sai sozinha quando o arquivo for resolvido.</span></div>';
+  }
+  return `<div class="aguardando"><b>Retirada</b><span>Saiu do mercado ${quando(s.sumiu_em || s.desde)} sem venda. `
+    + 'Se for anunciada de novo, você é avisado.</span></div>';
 }
 
 function slotHtml(it, i, indice) {
@@ -940,6 +972,7 @@ function iniciarDetalhes() {
     if (e.target.closest('#abrir-site')) window.open(S.conta.url, '_blank');
     if (e.target.closest('#copiar-link')) navigator.clipboard.writeText(S.conta.url).then(() => avisar('Link copiado.'));
     if (e.target.closest('#recolher')) recolherDetalhes(true);
+    if (e.target.closest('#favoritar')) alternarFavorita(S.conta.anuncio.id, S.conta.favorita);
     if (e.target.closest('#ler-agora')) {
       api('POST', `/api/ler/${S.conta.anuncio.id}`, {}).then(() => avisar('A conta vai ser lida em instantes.'));
     }
@@ -1104,6 +1137,7 @@ function aplicarLarguras(cfg) {
   const main = $('#v-contas');
   main.style.setProperty('--w-filtros', `${cfg.largura_filtros}%`);
   main.style.setProperty('--w-detalhes', `${cfg.largura_detalhes}%`);
+  $('#v-favoritas').style.setProperty('--w-detalhes', `${cfg.largura_detalhes}%`);
   main.classList.toggle('sem-detalhes', !!cfg.detalhes_recolhidos);
   $('#abrir-detalhes').hidden = !cfg.detalhes_recolhidos;
 }
@@ -1123,6 +1157,7 @@ function iniciarDivisores() {
       } else {
         valor = limitar((caixa.right - ev.clientX) / caixa.width * 100, 20, 50);
         main.style.setProperty('--w-detalhes', `${valor}%`);
+        $('#v-favoritas').style.setProperty('--w-detalhes', `${valor}%`);
       }
     };
     const soltar = () => {
@@ -1390,8 +1425,8 @@ function desenharBuscas() {
     <div class="aviso-linha" data-conta="${a.anuncio_id}">
       <time>${quando(a.quando)}</time>
       <div><b>${esc(a.conta || 'Conta ' + a.anuncio_id)}${a.ativo === 0 ? ' <span class="dim" style="font-weight:400">(saiu do ar)</span>' : ''}</b>
-        <small>${esc(a.busca)} · ${esc(a.classe || '')} ${a.nivel || ''} · ${esc(a.motivo)}</small></div>
-      <div class="num"><b>${inteiro(a.preco)} TCC</b><small class="${a.lucro_rs >= 0 ? 'ok' : 'ruim'}" style="display:block">${a.lucro_rs != null ? reais(a.lucro_rs, true) : ''}</small></div>
+        <small>${esc([a.busca, `${a.classe || ''} ${a.nivel || ''}`.trim(), a.motivo].filter(Boolean).join(' · '))}</small></div>
+      <div class="num"><b>${a.preco != null ? inteiro(a.preco) + ' TCC' : ''}</b><small class="${a.lucro_rs >= 0 ? 'ok' : 'ruim'}" style="display:block">${a.lucro_rs != null ? reais(a.lucro_rs, true) : ''}</small></div>
     </div>`).join('')
     : '<div class="vazio-valores"><b>Nenhum aviso ainda.</b>Quando uma conta nova bater com uma busca salva, ela aparece aqui.</div>';
 }
@@ -1439,6 +1474,91 @@ function iniciarBuscas() {
 function abrirConta(id) {
   trocarAba('contas');
   selecionar(id, true);
+}
+
+// ================================================================ favoritas
+// O programa acompanha cada favorita: avisa quando ela baixa de preço, recebe lance ou sai do mercado, e procura
+// no histórico de vendas do site se foi vendida (docs/superpowers/specs/2026-10-28-favoritas-design.md).
+const TITULO_FAVORITAR = 'Marcar como favorita: o programa avisa se ela baixar de preço, receber lance ou sair do mercado';
+const estrelaHtml = (id, on) => `<button class="estrela${on ? ' on' : ''}" data-estrela="${id}" `
+  + `title="${on ? 'Favorita: clique para desmarcar' : TITULO_FAVORITAR}"><svg class="ic"><use href="#i-star"/></svg></button>`;
+
+/** Marca ou desmarca (marcada: como está agora). A lista e os detalhes mudam na hora; o resto vem com o estado. */
+async function alternarFavorita(id, marcada) {
+  try {
+    await api(marcada ? 'DELETE' : 'POST', `/api/favoritas/${id}`, marcada ? undefined : {});
+  } catch (err) { avisar(err.message, true); return; }
+  avisar(marcada ? 'Saiu das favoritas.' : 'Favorita: você é avisado se ela baixar de preço, receber lance ou sair do mercado.');
+  const c = S.resultado?.contas.find(x => x.id === id);
+  if (c) { c.favorita = !marcada; S.assinaturaLista = null; desenharLista(); }
+  if (S.conta?.anuncio.id === id) recarregarDetalhes();
+  if (S.aba === 'favoritas') carregarFavoritas();
+  atualizarEstado();
+}
+
+async function carregarFavoritas() {
+  try {
+    S.favoritas = (await api('GET', '/api/favoritas')).favoritas;
+  } catch (err) { avisar(err.message, true); return; }
+  desenharFavoritas();
+  if (S.aba !== 'favoritas') return;
+  const f = S.favoritas.find(x => x.id === S.sel);
+  const assinatura = x => [x.anuncio?.preco, x.anuncio?.ativo, x.anuncio?.lances, x.anuncio?.maior_lance,
+    x.anuncio?.lida, x.situacao?.situacao, x.situacao?.tentativas].join('|');
+  if (f && S.conta?.anuncio.id === f.id && assinatura(f) !== assinatura({ anuncio: S.conta.anuncio, situacao: S.conta.situacao })) {
+    recarregarDetalhes();
+  }
+  selecionarFavorita();
+}
+
+/** Na aba Favoritas, a conta dos detalhes é uma favorita: sem nenhuma escolhida, a primeira. */
+function selecionarFavorita() {
+  if (S.favoritas.length && !S.favoritas.some(f => f.id === S.sel)) selecionar(S.favoritas[0].id);
+}
+
+const MUDOU_MIN = 30;  // a favorita que mudou de situação fica destacada por 30 min, como o lance novo
+function situacaoHtml(f) {
+  const s = f.situacao;
+  if (!s) return '<span class="dim">na próxima consulta da lista</span>';
+  const recente = s.desde !== f.criado_em && Date.now() - new Date(s.desde).getTime() < MUDOU_MIN * 60000;
+  const texto = { a_venda: 'À venda', confirmando: 'Confirmando venda…', retirada: 'Retirada', vendida: 'Vendida' }[s.situacao];
+  const sub = s.situacao === 'confirmando' ? `saiu ${quando(s.sumiu_em)} · ${s.tentativas} de 3 buscas no histórico`
+    : s.situacao === 'retirada' ? `saiu ${quando(s.sumiu_em || s.desde)} sem venda` : '';
+  return `<span class="situacao ${s.situacao}${recente ? ' recente' : ''}">${recente ? '▲ ' : ''}${texto}</span>`
+    + (sub ? `<span class="sub">${esc(sub)}</span>` : '');
+}
+
+function desenharFavoritas() {
+  const fav = S.favoritas;
+  const quantas = situacao => fav.filter(f => f.situacao?.situacao === situacao).length;
+  const partes = [`<b>${inteiro(fav.length)}</b> ${fav.length === 1 ? 'favorita' : 'favoritas'}`];
+  if (quantas('confirmando')) partes.push(`${quantas('confirmando')} confirmando venda`);
+  if (quantas('retirada')) partes.push(`${quantas('retirada')} ${quantas('retirada') === 1 ? 'retirada' : 'retiradas'}`);
+  if (fav.length) partes.push('<span class="dim">vendida sai daqui depois do aviso</span>');
+  $('#resumo-fav').innerHTML = partes.join(' · ');
+  $('#fav-vazia').hidden = fav.length > 0;
+  $('#linhas-fav').innerHTML = fav.map(f => {
+    const a = f.anuncio;
+    return `
+    <tr data-id="${f.id}" class="${f.id === S.sel ? 'sel' : ''}${a?.ativo ? '' : ' fora'}">
+      <td class="col-estrela">${estrelaHtml(f.id, true)}</td>
+      <td class="conta"><div><span class="nome">${esc(f.nome)}</span></div>${a ? '' : '<span class="sub">ainda não vista neste PC</span>'}</td>
+      <td>${a ? `<img class="icone-classe" src="${CLASSE(a.ocupacao)}" alt="" ${SEM_IMG}>${esc(a.classe)} ${a.nivel}` : '<span class="dim">—</span>'}</td>
+      <td class="num">${a ? `${inteiro(a.preco)}<span class="sub" title="Lance mínimo: ${LANCE_MINIMO_PCT}% do preço">mín. ${inteiro(lanceMinimo(a.preco))}</span>${a.ativo ? lanceHtml(a) : ''}`
+        : '<span class="dim">—</span>'}</td>
+      <td>${situacaoHtml(f)}</td>
+      <td class="dim" title="${f.situacao ? quando(f.situacao.desde) : ''}">${f.situacao ? ha(f.situacao.desde) : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function iniciarFavoritas() {
+  $('#linhas-fav').addEventListener('click', e => {
+    const estrela = e.target.closest('[data-estrela]');
+    if (estrela) { alternarFavorita(Number(estrela.dataset.estrela), true); return; }
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) selecionar(Number(tr.dataset.id));
+  });
 }
 
 // ---------------------------------------------------------------- janela "salvar busca"
@@ -1755,6 +1875,7 @@ async function iniciar() {
   iniciarDivisores();
   iniciarValores();
   iniciarBuscas();
+  iniciarFavoritas();
   iniciarModalBusca();
   iniciarGrupos();
   iniciarSincronia();
@@ -1770,7 +1891,7 @@ async function iniciar() {
   await carregarValores(false);
   carregarBuscas();
   const aba = location.hash.slice(1);
-  if (['valores', 'buscas'].includes(aba)) trocarAba(aba);
+  if (['valores', 'buscas', 'favoritas'].includes(aba)) trocarAba(aba);
   setInterval(atualizarEstado, 3000);
   const sinal = () => api('POST', '/api/sinal', {}).catch(() => {});
   sinal();

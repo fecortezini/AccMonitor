@@ -47,7 +47,7 @@ class Lista(BaseBanco):
         lista[1] = site.Anuncio(id=1, preco=50, nivel=105, ocupacao=6, nome='Novata', classe='Arqueiro', ceu='Real I')
         mudou = self.banco.atualizar_lista(lista)
         self.assertEqual(mudou, {'primeira': False, 'novos': [1], 'baixaram': [(45520, 2400, 2000)],
-                                 'reativados': [], 'removidos': 1})
+                                 'reativados': [], 'removidos': 1, 'sumiram': [231216]})
         self.assertTrue(self.banco.anuncio(1)['nova'])
         self.assertFalse(self.banco.anuncio(231216)['ativo'])
 
@@ -418,6 +418,93 @@ class Outros(BaseBanco):
         self.banco.con.execute("UPDATE anuncios SET ultimo_visto = '2000-01-01T00:00:00' WHERE id = 231216")
         self.assertEqual(self.banco.limpar_antigos(), 1)
         self.assertEqual(self.banco.conta(231216)['itens'], [])
+
+
+class Favoritas(BaseBanco):
+    def tirar_do_ar(self, rid):
+        lista = dict(self.lista)
+        del lista[rid]
+        self.banco.atualizar_lista(lista)
+
+    def test_marcar_e_desmarcar(self):
+        self.banco.marcar_favorita(231216)
+        self.banco.marcar_favorita(231216)  # de novo: nada muda
+        favoritas = self.banco.favoritas()
+        self.assertEqual([(f['id'], f['nome'], f['situacao']['situacao']) for f in favoritas],
+                         [(231216, 'TooSadToDie', 'a_venda')])
+        self.assertEqual(favoritas[0]['anuncio']['preco'], 15000)
+        self.assertTrue(next(c for c in self.banco.buscar({})['contas'] if c['id'] == 231216)['favorita'])
+        self.assertFalse(next(c for c in self.banco.buscar({})['contas'] if c['id'] == 45520)['favorita'])
+        conta = self.banco.conta(231216)
+        self.assertEqual((conta['favorita'], conta['situacao']['situacao']), (True, 'a_venda'))
+        self.banco.desmarcar_favorita(231216)
+        self.assertEqual(self.banco.favoritas(), [])
+        self.assertEqual((self.banco.conta(231216)['favorita'], self.banco.conta(231216)['situacao']), (False, None))
+
+    def test_conta_que_nao_existe(self):
+        with self.assertRaises(KeyError):
+            self.banco.marcar_favorita(999)
+
+    def test_marcar_conta_que_ja_saiu_do_ar_comeca_conferindo(self):
+        self.tirar_do_ar(231216)
+        self.banco.marcar_favorita(231216)
+        s = self.banco.situacao_favorita(231216)
+        self.assertEqual(s['situacao'], 'confirmando')
+        self.assertEqual(s['visto_antes'], self.banco.anuncio(231216)['ultimo_visto'])
+        self.assertEqual([f['id'] for f in self.banco.buscas_de_venda()], [231216])  # a busca é já
+
+    def test_agenda_das_buscas_de_venda(self):
+        self.banco.marcar_favorita(231216)
+        self.banco.definir_situacao(231216, 'confirmando', sumiu_em='2026-10-28T13:00:00',
+                                    visto_antes='2026-10-28T12:59:30', proxima_em='2026-10-28T13:01:00')
+        self.assertEqual(self.banco.proxima_busca_de_venda(), '2026-10-28T13:01:00')
+        self.assertEqual(self.banco.buscas_de_venda('2026-10-28T13:00:59'), [])
+        self.assertEqual([(f['id'], f['nome'], f['tentativas']) for f in self.banco.buscas_de_venda('2026-10-28T13:01:00')],
+                         [(231216, 'TooSadToDie', 0)])
+        self.banco.agendar_busca_de_venda(231216, 1, '2026-10-28T13:03:00')
+        self.assertEqual(self.banco.proxima_busca_de_venda(), '2026-10-28T13:03:00')
+        self.banco.definir_situacao(231216, 'retirada')
+        self.assertIsNone(self.banco.proxima_busca_de_venda())
+
+    def test_situacao_de_quem_nao_e_favorita(self):
+        self.assertFalse(self.banco.definir_situacao(231216, 'a_venda'))  # desmarcada nesse meio-tempo
+        self.assertIsNone(self.banco.situacao_favorita(231216))
+
+    def test_ordem_confirmando_primeiro(self):
+        for rid in (45520, 231216, 3152):
+            self.banco.marcar_favorita(rid)
+        self.banco.con.execute("UPDATE situacao_favoritas SET desde = '2026-10-01T00:00:00' WHERE id = 45520")
+        self.banco.definir_situacao(45520, 'confirmando', proxima_em='2099-01-01T00:00:00')
+        self.banco.con.execute("UPDATE situacao_favoritas SET desde = '2026-10-02T00:00:00' WHERE id = 3152")
+        self.assertEqual([f['id'] for f in self.banco.favoritas()], [45520, 231216, 3152])
+
+    def test_itens_das_favoritas_nao_sao_limpos(self):
+        self.banco.marcar_favorita(231216)
+        self.tirar_do_ar(231216)
+        self.banco.con.execute("UPDATE anuncios SET ultimo_visto = '2000-01-01T00:00:00' WHERE id = 231216")
+        self.assertEqual(self.banco.limpar_antigos(), 0)
+        self.assertTrue(self.banco.conta(231216)['itens'])
+
+    def test_vendida_e_esquecida(self):
+        self.banco.marcar_favorita(231216)
+        self.tirar_do_ar(231216)
+        self.banco.esquecer_vendida(231216)
+        self.assertEqual(self.banco.favoritas(), [])
+        self.assertIsNone(self.banco.situacao_favorita(231216))
+        conta = self.banco.conta(231216)
+        self.assertEqual((conta['itens'], conta['anuncio']['lida'], conta['favorita']), ([], False, False))
+
+    def test_avisos_das_favoritas_junto_com_os_das_buscas(self):
+        busca = self.banco.salvar_busca({'nome': 'Tudo', 'filtros': {}})
+        self.banco.registrar_aviso(busca, 45520, 2400, None, 'anúncio novo')
+        self.banco.marcar_favorita(231216)
+        self.banco.registrar_aviso_favorita(231216, 'TooSadToDie', 'saiu', 'saiu do mercado', 15000)
+        self.banco.con.execute("UPDATE avisos SET quando = '2026-10-28T10:00:00'")
+        self.banco.con.execute("UPDATE avisos_favoritas SET quando = '2026-10-28T11:00:00'")
+        avisos = self.banco.avisos()
+        self.assertEqual([(a['busca'], a['conta'], a['motivo']) for a in avisos],
+                         [('★ Favorita', 'TooSadToDie', 'saiu do mercado'), ('Tudo', 'memoryzito', 'anúncio novo')])
+        self.assertEqual((avisos[0]['classe'], avisos[0]['nivel'], avisos[0]['evento']), ('Bárbaro', 105, 'saiu'))
 
 
 if __name__ == '__main__':

@@ -10,9 +10,13 @@ from mercado.banco import Banco, dados_normalizados
 COSMOS = 72573
 
 
-def dados(valores=(), buscas=(), grupos=(), **cfg):
+def dados(valores=(), buscas=(), grupos=(), favoritas=(), **cfg):
     return dados_normalizados({'configuracoes': cfg, 'valores': list(valores), 'buscas': list(buscas),
-                               'grupos': list(grupos)})
+                               'grupos': list(grupos), 'favoritas': list(favoritas)})
+
+
+def favorita(rid, quando='2026-10-28T10:00:00'):
+    return {'id': rid, 'nome': f'Conta {rid}', 'criado_em': quando, 'atualizado_em': quando}
 
 
 def valor(vid, nome, kk, quando='2026-09-01T10:00:00'):
@@ -71,6 +75,16 @@ class Juntar(unittest.TestCase):
         remoto = dados([{**valor(1, 'UP3', 50), 'grupo_id': 1}], grupos=[grupo('UP3')])
         juntos = sincronia.juntar(dados(), local, remoto)
         self.assertEqual([(v['nome'], v['grupo_id']) for v in juntos['valores']], [('UP3', 1), ('UP4', 2)])
+
+    def test_favoritas(self):
+        base = dados(favoritas=[favorita(10), favorita(20)])
+        local = dados(favoritas=[favorita(10), favorita(30, '2026-10-28T12:00:00')])  # desmarcou a 20, marcou a 30
+        remoto = dados(favoritas=[favorita(10), favorita(20), favorita(30, '2026-10-28T11:00:00'), favorita(40)])
+        juntos = sincronia.juntar(base, local, remoto)
+        # a 30, marcada nos dois, fica uma só, com o id da conta e a data de quando foi marcada primeiro
+        self.assertEqual([(f['id'], f['criado_em']) for f in juntos['favoritas']],
+                         [(10, '2026-10-28T10:00:00'), (30, '2026-10-28T11:00:00'), (40, '2026-10-28T10:00:00')])
+        self.assertEqual(sincronia._resumo(local, juntos), ['2 favoritas'])  # a 30 (outra data) e a 40
 
 
 def git(pasta, *args):

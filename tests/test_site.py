@@ -4,6 +4,7 @@ import threading
 import time
 import unittest
 import urllib.error
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
@@ -99,6 +100,40 @@ class LerLance(unittest.TestCase):
 
     def test_pagina_sem_botao_de_lance(self):
         self.assertIsNone(site.ler_lance('<html><a href="#comprar">Comprar</a></html>'))
+
+
+class Historico(unittest.TestCase):
+    """Histórico de vendas e página da venda (salvos em 2026-10-28)."""
+
+    def test_busca_por_nome(self):
+        vendas = site.ler_historico(paginas.historico('bruxinha'))
+        self.assertEqual(vendas, [
+            site.Venda(venda=47850, nome='Bruxinha', preco=105, quando=datetime(2026, 10, 28, 13, 0)),
+            site.Venda(venda=47796, nome='Bruxinha', preco=119, quando=datetime(2026, 10, 27, 22, 58)),
+        ])  # só a parte "Contas vendidas": as "Maiores vendas" da mesma página ficam de fora
+
+    def test_url_do_historico(self):
+        self.assertEqual(site.url_historico('=Moriac= x'), f'{site.SITE}/history?game=pw187&q=%3DMoriac%3D+x&period=90&sort=recent')
+
+    def test_historico_sem_vendas(self):
+        pagina = '<div class="mkh__panel" id="mkh-panel-contas"><div class="mkh__empty">Nada</div></div><div id="mkh-panel-maiores">'
+        self.assertEqual(site.ler_historico(pagina), [])
+
+    def test_historico_que_mudou_e_erro(self):
+        with self.assertRaises(ValueError):
+            site.ler_historico('<html><body>manutenção</body></html>')
+
+    def test_venda_por_lance(self):
+        self.assertEqual(site.ler_venda(paginas.venda(47855)), {
+            'id': 344032, 'preco': 30, 'anunciada': 40, 'lance': True, 'quando': datetime(2026, 10, 28, 13, 42)})
+
+    def test_venda_direta(self):
+        self.assertEqual(site.ler_venda(paginas.venda(47847)), {
+            'id': 21856, 'preco': 700, 'anunciada': 700, 'lance': False, 'quando': datetime(2026, 10, 28, 12, 50)})
+
+    def test_pagina_sem_venda_e_erro(self):
+        with self.assertRaises(ValueError):
+            site.ler_venda(paginas.conta(45520))  # uma conta à venda não tem o quadro "Vendida em"
 
 
 class _SiteLocal(BaseHTTPRequestHandler):

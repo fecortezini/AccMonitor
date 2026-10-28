@@ -104,13 +104,16 @@ def juntar(base, local, remoto):
     - os dois criaram um item com o mesmo id: o do outro PC fica com o id, e o deste ganha um novo.
       As buscas e os valores deste PC que usavam um grupo que mudou de id passam a usar o id novo;
     - uma configuração mudada nos dois: fica a deste PC.
+    As favoritas também vão pelo id, que é o da conta: marcada nos dois PCs, fica uma só (ver _juntar_favoritas).
     """
     cfg = {chave: remoto['configuracoes'].get(chave, v) if v == base['configuracoes'].get(chave) else v
            for chave, v in local['configuracoes'].items()}
     grupos, novos_ids = _juntar_lista(base['grupos'], local['grupos'], remoto['grupos'])
     valores, _ = _juntar_lista(base['valores'], local['valores'], remoto['valores'], _trocar_grupo_do_valor(novos_ids))
     buscas, _ = _juntar_lista(base['buscas'], local['buscas'], remoto['buscas'], _trocar_grupos(novos_ids))
-    return dados_normalizados({'configuracoes': cfg, 'valores': valores, 'buscas': buscas, 'grupos': grupos})
+    favoritas = _juntar_favoritas(base['favoritas'], local['favoritas'], remoto['favoritas'])
+    return dados_normalizados({'configuracoes': cfg, 'valores': valores, 'buscas': buscas, 'grupos': grupos,
+                               'favoritas': favoritas})
 
 
 def _juntar_lista(base, local, remoto, ajustar_local=None):
@@ -143,6 +146,26 @@ def _juntar_lista(base, local, remoto, ajustar_local=None):
     return juntos, novos_ids
 
 
+def _juntar_favoritas(base, local, remoto):
+    """Como _juntar_lista, mas o id é o da conta e nunca muda: a mesma conta marcada nos dois PCs fica uma só,
+    a marcada primeiro. Desmarcada (ou vendida) num PC e intocada no outro, sai."""
+    b_, l_, r_ = ({x['id']: x for x in lista} for lista in (base, local, remoto))
+    juntas = []
+    for i in sorted(set(b_) | set(l_) | set(r_)):
+        b, l, r = b_.get(i), l_.get(i), r_.get(i)
+        if l == r or r == b:
+            escolhida = l
+        elif l == b:
+            escolhida = r
+        elif l is None or r is None:  # um desmarcou e o outro mudou: fica a mudança
+            escolhida = l if l is not None else r
+        else:                         # marcada nos dois
+            escolhida = min(l, r, key=lambda f: f['criado_em'])
+        if escolhida is not None:
+            juntas.append(escolhida)
+    return juntas
+
+
 def _trocar_grupos(novos_ids):
     """Ajuste das buscas deste PC: as condições de grupo passam para o id novo do grupo."""
     if not novos_ids:
@@ -168,7 +191,8 @@ def _trocar_grupo_do_valor(novos_ids):
 def _resumo(antes, depois):
     """O que mudou de antes para depois, em partes curtas: ['2 valores', '1 grupo', 'configurações']."""
     partes = []
-    for secao, um, varios in (('valores', 'valor', 'valores'), ('buscas', 'busca', 'buscas'), ('grupos', 'grupo', 'grupos')):
+    for secao, um, varios in (('valores', 'valor', 'valores'), ('buscas', 'busca', 'buscas'), ('grupos', 'grupo', 'grupos'),
+                              ('favoritas', 'favorita', 'favoritas')):
         a, d = ({x['id']: x for x in dados[secao]} for dados in (antes, depois))
         if n := sum(a.get(i) != d.get(i) for i in set(a) | set(d)):
             partes.append(f'{n} {um if n == 1 else varios}')

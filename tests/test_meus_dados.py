@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from mercado import site
-from mercado.banco import Banco
+from mercado.banco import Banco, _hash
 from mercado.coletor import ALTA, Coletor, Estado
 from mercado.servidor import App
 from tests import paginas
@@ -201,6 +201,31 @@ class MeusDados(unittest.TestCase):
                          [('Livros', gid, 9000.0)])
         self.assertIn(('Livros', 9000.0), [(d['nome'], d['kk']) for d in outro.conta(231216)['detalhes']])  # o Cosmos +12
 
+    def test_favoritas_vao_para_o_outro_pc(self):
+        este = self.abrir()
+        texto_antes = self.arquivo.read_text(encoding='utf-8')
+        este.marcar_favorita(231216)
+        arquivo = self.ler()
+        self.assertEqual(arquivo['formato'], 3)  # o programa antigo recusa, em vez de perder as favoritas
+        self.assertEqual([(f['id'], f['nome']) for f in arquivo['favoritas']], [(231216, 'TooSadToDie')])
+        outro = self.abrir('outro')
+        self.assertEqual(outro.ids_favoritas(), {231216})
+        outro.definir_situacao(231216, 'retirada')
+        este.desmarcar_favorita(231216)
+        self.assertEqual(self.arquivo.read_text(encoding='utf-8'), texto_antes)  # sem favoritas, o arquivo de antes
+        outro.sincronizar()
+        self.assertEqual(outro.ids_favoritas(), set())
+        self.assertIsNone(outro.situacao_favorita(231216))  # a situação deste PC sai junto
+
+    def test_sem_favoritas_nada_conta_como_mudado(self):
+        banco = self.abrir()
+        banco.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'refino_min': 12, 'valor_kk': 6000})
+        banco.salvar_meta('enviado_hash', banco.meta('dados_hash'))
+        # o hash guardado por uma versão sem favoritas é o mesmo
+        self.assertEqual(_hash({k: v for k, v in banco.dados_compartilhados().items() if k != 'favoritas'}),
+                         banco.meta('dados_hash'))
+        self.assertFalse(banco.dados_a_enviar())
+
     def test_pc_que_ja_tinha_dados_fica_com_os_do_arquivo(self):
         este = self.abrir()
         este.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'refino_min': 12, 'valor_kk': 6000})
@@ -314,7 +339,7 @@ class MeusDados(unittest.TestCase):
 
     def test_arquivo_de_versao_mais_nova(self):
         banco = self.abrir()
-        self.escrever({**self.ler(), 'formato': 3})
+        self.escrever({**self.ler(), 'formato': 4})
         with self.assertLogs('mercado', 'WARNING'):
             self.assertFalse(banco.sincronizar())
         self.assertIn('versão mais nova', banco.erro_dados)

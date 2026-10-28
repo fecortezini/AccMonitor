@@ -41,6 +41,9 @@ class ColetorFalso:
     def acompanhar_conta(self, rid):
         self.aberta = rid
 
+    def favoritas_mudaram(self):
+        self.acordou = True
+
     def ler_primeiro(self, ids):
         self.primeiro = ids
 
@@ -115,6 +118,18 @@ class Servidor(unittest.TestCase):
         self.assertEqual(dados['anuncio']['nome'], 'memoryzito')
         self.assertTrue(dados['url'].endswith('/pw187/details/45520'))
         self.assertEqual(self.chamar('GET', '/api/conta/1')[0], 404)
+
+    def test_favoritas(self):
+        self.assertEqual(self.chamar('POST', '/api/favoritas/45520', {})[0], 200)
+        self.assertTrue(self.coletor.acordou)
+        _, dados = self.chamar('GET', '/api/favoritas')
+        self.assertEqual([(f['id'], f['nome'], f['situacao']['situacao']) for f in dados['favoritas']],
+                         [(45520, 'memoryzito', 'a_venda')])
+        self.assertTrue(self.chamar('GET', '/api/conta/45520')[1]['favorita'])
+        self.assertEqual(self.chamar('GET', '/api/estado')[1]['n_favoritas'], 1)
+        self.assertEqual(self.chamar('DELETE', '/api/favoritas/45520')[0], 200)
+        self.assertEqual(self.chamar('GET', '/api/favoritas')[1]['favoritas'], [])
+        self.assertEqual(self.chamar('POST', '/api/favoritas/1', {})[0], 404)  # conta que não existe
 
     def test_sugestoes(self):
         _, dados = self.chamar('GET', '/api/sugestoes?q=pedra%20do%20dem')

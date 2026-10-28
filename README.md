@@ -6,6 +6,8 @@ Programa para PC que acompanha o [Marketplace The Classic](https://marketplace.t
 - calcula quanto cada conta vale pela **sua** tabela de valores e ordena pelas maiores barganhas;
 - avisa na hora quando aparece uma conta nova, ou que baixou de preço, que bate com uma busca salva.
 
+Além disso, acompanha as contas que você marca como **favoritas**: avisa quando elas baixam de preço, recebem lance ou saem do mercado, e diz se saíram porque foram vendidas.
+
 ![Aba Contas: filtros, lista ordenada por lucro e detalhes com o tooltip do item](docs/telas/contas.png)
 
 ## Como abrir
@@ -31,7 +33,7 @@ Nos outros PCs, os passos 3 e 4 não são necessários: os valores, as buscas e 
 
 ## Em mais de um PC
 
-A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configurações ficam no arquivo **`meus-dados.json`**, que vai pelo git junto com o programa. Você configura uma vez, e todos os PCs usam os mesmos dados.
+A tabela de valores, as buscas salvas, os grupos de itens, as favoritas e as ⚙ Configurações ficam no arquivo **`meus-dados.json`**, que vai pelo git junto com o programa. Você configura uma vez, e todos os PCs usam os mesmos dados.
 
 - **Botão Sincronizar** (no topo): clique ao terminar num PC e ao começar no outro.
   - **O que faz:** manda para o GitHub o que mudou aqui e traz o que mudou lá, pelo git da pasta do programa. O programa grava no `meus-dados.json` a cada mudança.
@@ -42,6 +44,7 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
 - **Sem o botão:** os mesmos passos podem ser feitos pelo git (`git add meus-dados.json`, `git commit`, `git push` e, no outro PC, `git pull`). Com o programa aberto, o que chega pelo `git pull` aparece em poucos segundos.
 - **O que fica em cada PC:**
   - as contas lidas do site: cada PC lê as suas, começando pelas que têm itens da sua tabela;
+  - a situação de cada favorita (à venda, confirmando venda ou retirada): cada PC descobre pelo site;
   - o histórico de avisos;
   - a largura dos painéis;
   - o Telegram e o Discord, para os tokens não irem para o git.
@@ -102,7 +105,29 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
 
 **Buscas e avisos**
 - Buscas salvas com "me avisar", preço máximo, lucro mínimo (R$ ou %) e quantas contas batem agora. Exemplo: avisar sempre que aparecer uma conta com um ou mais itens escolhidos por até 5.000 TCC. O preço aceita "5k". Ele é o mesmo "Preço máximo" dos filtros, então vale também para a lista da busca.
-- Histórico dos avisos. Clicar num aviso abre a conta.
+- Histórico dos avisos, das buscas e das favoritas ("★ Favorita"). Clicar num aviso abre a conta.
+
+**★ Favoritas**
+- **Marcar:** clique na ☆ ao lado do nome de uma conta na aba Contas, ou no botão **Favoritar** dos detalhes. Clicar de novo desmarca.
+- **A aba:** a lista das favoritas, com preço, lances e a situação de cada uma (**À venda**, **Confirmando venda…** ou **Retirada**), e os detalhes ao lado, como na aba Contas. As que estão confirmando venda vêm primeiro, e uma situação que mudou nos últimos 30 min fica verde, com ▲.
+- **Avisos** (pelos mesmos canais das buscas, com "★" no título):
+
+  | Acontecimento | Quando avisa |
+  |---|---|
+  | Baixou de preço | Na consulta da lista, com o preço de antes e o novo. |
+  | Lance novo | Na releitura dos lances. Os das favoritas são relidos a cada 1 min, junto com a conta aberta. Como as outras, só depois da carga inicial. |
+  | Saiu do mercado | Na hora: "saiu do mercado, conferindo se foi vendida…". |
+  | Vendida | Em ~1 a 2 min: "vendida por 30 TCC (anunciada por 40 TCC, lance aceito)". Clicar abre a página da venda no site. |
+  | Retirada | 10 min depois de sair, quando não aparece venda: "saiu do mercado sem venda". |
+  | Anunciada de novo | Uma retirada que volta ao mercado, com o preço novo. |
+
+- **Como ele sabe que foi vendida:** procura o nome da conta no [histórico de vendas](https://marketplace.theclassic.games/history?game=pw187) do site 1, 3 e 10 min depois de ela sair da lista. A página de cada venda com esse nome mostra o ID da conta, que confirma se é ela. São 1 ou 2 páginas a mais por favorita que sai. Sem internet, a busca é refeita depois, sem contar como tentativa.
+- **Vendida sai das favoritas:** depois do aviso, ela deixa de ser favorita (também no outro PC, pelo Sincronizar), e os itens guardados dela são apagados. Se quem comprou anunciar a conta de novo, ela aparece na lista como qualquer outra.
+- **Programa fechado:** ao abrir, as favoritas que saíram enquanto ele estava fechado são procuradas no histórico, que guarda 90 dias. Nesse caso não vem o aviso "saiu", só o resultado.
+- **Itens:** os itens de uma favorita que saiu do ar continuam guardados, mesmo depois dos 7 dias em que os das outras contas são apagados.
+- **Limitações:**
+  - se o comprador trocar o nome da conta, a venda não é achada, e ela aparece como retirada;
+  - se ela for vendida e anunciada de novo enquanto o programa estava fechado, ele só vê o preço novo.
 
 **⚙ Configurações**
 
@@ -137,7 +162,7 @@ A tabela de valores, as buscas salvas, os grupos de itens e as ⚙ Configuraçõ
 | `Mercado PW.bat` | Abre o programa. |
 | `python/` | O Python que o programa usa, sem instalar (o "embeddable" 3.13 do python.org). O `python313._pth` inclui a pasta do programa (`..`) para o `-m mercado` funcionar. |
 | `mercado/` | Código: leitura do site, banco, cálculo, coletor, avisos, servidor local e interface (`mercado/ui`). |
-| `meus-dados.json` | Sua tabela de valores, buscas, grupos de itens e configurações. Vai pelo git para os outros PCs (veja "Em mais de um PC"). |
+| `meus-dados.json` | Sua tabela de valores, buscas, grupos de itens, favoritas e configurações. Vai pelo git para os outros PCs (veja "Em mais de um PC"). |
 | `mercado.db` | As contas lidas do site, o histórico de avisos e uma cópia dos seus dados. Fica só neste PC. |
 | `mercado.log` | Registro do que o programa fez, inclusive o motivo de cada encerramento. Útil se algo der errado. |
 | `.janela/` | Perfil separado do Edge usado pela janela do programa. |
@@ -152,5 +177,5 @@ py -m mercado --sem-janela --porta 8765   # só o servidor, para abrir no navega
 ```
 
 - **Segurança:** o servidor local só aceita conexões do próprio PC. Cada chamada da interface leva um token gerado a cada execução.
-- **Ritmo:** o programa só lê páginas públicas do marketplace. Mantenha o intervalo e a pausa em valores razoáveis. O ritmo dos lances fica nas constantes `LANCES_*` do `mercado/coletor.py`.
+- **Ritmo:** o programa só lê páginas públicas do marketplace. Mantenha o intervalo e a pausa em valores razoáveis. O ritmo dos lances fica nas constantes `LANCES_*` do `mercado/coletor.py`, e o das buscas no histórico de vendas nas `BUSCAS_DE_VENDA_MIN`, `VENDA_FOLGA_MIN`, `VENDAS_A_CONFERIR` e `BUSCA_FALHOU_S`.
 - **Se o site mudar:** se o layout do marketplace mudar, a leitura pode falhar. Nesse caso aparece um aviso no topo da janela e nada do que já foi guardado é apagado.

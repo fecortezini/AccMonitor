@@ -1,6 +1,6 @@
 # Estado do projeto
 
-*Atualizado em 23/09/2026.*
+*Atualizado em 28/10/2026.*
 
 ## O projeto
 
@@ -26,6 +26,25 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Janela própria:** o Edge abre em modo aplicativo, e fechar a janela encerra o programa.
 
 **Melhorias depois da primeira versão:**
+- **Favoritas (28/10):** marcar contas com a ☆ (na lista ou nos detalhes) e acompanhar cada uma numa aba própria. O desenho está em [docs/superpowers/specs/2026-10-28-favoritas-design.md](docs/superpowers/specs/2026-10-28-favoritas-design.md).
+  - **Avisos:**
+    - baixou de preço;
+    - lance novo (os lances das favoritas são relidos de perto, junto com a conta aberta);
+    - saiu do mercado (na hora);
+    - depois, **vendida** (com o preço final, o anunciado e se foi lance aceito) ou **retirada** (sem venda em 10 min);
+    - anunciada de novo, se voltar depois de retirada.
+  - **Vendida é esquecida** (pedido do usuário): depois do aviso, sai das favoritas, também no outro PC, e os itens dela são apagados.
+  - **Como descobre a venda:**
+    - **O histórico:** o `/history?game=pw187&q={nome}` do site busca as vendas pelo nome.
+    - **O número da venda** (`/pw187/vendida/{n}`) não é o id da conta. A página da venda mostra o ID, que confirma se é ela.
+    - **Tempo:** a conta sai da lista ~1 min antes de a venda aparecer no histórico. Por isso as buscas são 1, 3 e 10 min depois de ela sumir.
+    - **Conferido em 28/10:** das 40 vendas mais recentes, 39 bateram pelo nome com contas que o programa tinha visto.
+    - **Datas:** valem só as vendas a partir da última vez que a conta foi vista, com 5 min de folga. Isso evita confundir com uma venda antiga da mesma conta (a Bruxinha foi vendida duas vezes em 14 h).
+    - **Venda direta:** a página não diz "anunciada por". O aviso diz "pelo preço anunciado".
+  - **Gasto:** 1 ou 2 páginas por favorita que sai, respeitando a pausa. Sem conexão, a busca não conta e é refeita em 2 min.
+  - **Dados:** as favoritas vão no `meus-dados.json`, que passa para o formato 3 quando tem alguma. A situação de cada uma e os avisos ficam no banco de cada PC. Os itens das favoritas não são apagados pela limpeza dos 7 dias.
+  - **Programa fechado:** as favoritas que saíram nesse tempo são procuradas ao abrir, sem o aviso "saiu".
+  - **Detalhes de conta fora do ar:** sem itens lidos, os detalhes não oferecem mais o "Ler agora" (o coletor não lê conta fora do ar).
 - **Botão Sincronizar (25/09):** no topo. Manda para o GitHub o que mudou no `meus-dados.json` e traz o que mudou no outro PC, pelo git da pasta (`mercado/sincronia.py`).
   - **Os dois PCs mudaram:** os dados se juntam item a item. Valores, buscas e grupos são comparados pelo id e configurações pela chave, e no mesmo item fica a versão mais recente. Não sobra conflito do git.
   - **Quando não mexe no git:** com mudanças no código sem commit, fora do `main` ou com commits dos dois lados. Nesses casos ele explica o que falta.
@@ -110,8 +129,11 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Busca por parte do nome (21/09):** o "Tem item" aceita parte do nome, inclusive de itens ainda não vistos nas contas lidas. Exemplo: "pedra do dem" no começo da carga, quando só as contas baratas foram lidas. Outro exemplo: "relíquia maravilha", que soma as três relíquias.
 
 **Testes:**
-- **Automáticos:** 138, com páginas reais do site salvas. A sincronia é testada com git de verdade: um "GitHub" numa pasta e dois clones. Todos passam.
-- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints. Rodou sem erros na primeira versão. Depois das melhorias, as telas foram conferidas num Edge invisível com um script avulso, porque o PC onde foram feitas não tem Node. Esse script cobriu os passos do teste antigo e os novos, sem erros. Em 22/09 o teste rodou de novo, com Node, e passou sem erros.
+- **Automáticos:** 195, com páginas reais do site salvas. Entre elas, desde 28/10, o histórico de vendas buscado por nome e duas páginas de venda: uma por lance e uma direta. A sincronia é testada com git de verdade: um "GitHub" numa pasta e dois clones. Todos passam.
+- **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints.
+  - **Primeira versão:** rodou sem erros.
+  - **Depois das melhorias:** as telas foram conferidas com um script avulso, porque o PC onde foram feitas não tinha Node. Ele cobriu os passos do teste antigo e os novos, sem erros. Em 22/09 o teste rodou de novo, com Node, e passou sem erros.
+  - **Favoritas (28/10):** o teste ganhou os passos da estrela na lista, da aba e do botão dos detalhes. Rodou sem erros num servidor à parte, com um banco temporário montado das páginas salvas, sem o site e sem o banco real.
 - **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
 - **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
 
@@ -126,12 +148,13 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 4. **Telegram e Discord:** nunca foram testados com um token ou webhook de verdade.
 5. **Dados em outro PC:** depois do `git pull`, abrir o programa no outro PC e ver a tabela, as buscas e as configurações chegarem.
 6. **Fechamento sozinho:** com a versão nova, ver se o programa ainda fecha sozinho. Se fechar, o `mercado.log` diz o motivo.
+7. **Favorita de verdade:** marcar algumas contas e ver os avisos de saída e de vendida ou retirada acontecerem com contas reais. Cada passo fica no `mercado.log`: "saiu da lista", "N venda(s) com o nome no histórico" e o aviso.
 
 **Seu trabalho no programa:**
-7. Cadastrar os valores reais na Tabela de valores (ex.: Cosmos +10 = 3 bi) e ajustar a cotação do bi e do TCC.
+8. Cadastrar os valores reais na Tabela de valores (ex.: Cosmos +10 = 3 bi) e ajustar a cotação do bi e do TCC.
 
 **Ideias para depois** (nada começado; conversar antes):
-- Usar o histórico de vendas do site (`/history`) para sugerir valores e preços típicos.
+- Usar o histórico de vendas do site (`/history`) para sugerir valores e preços típicos. As favoritas já leem o histórico (`site.ler_historico` e `site.ler_venda`), mas só o das favoritas que saem da lista.
 - Avisar com a janela fechada, por um ícone perto do relógio. Foi a opção C no brainstorming e ficou de fora.
 - Gerar um `.exe` para não depender do Python instalado.
 - Apagar o `helper.py`, o `filtros.toml` e o `iniciar.bat` (a versão antiga de linha de comando) quando o programa novo estiver validado.

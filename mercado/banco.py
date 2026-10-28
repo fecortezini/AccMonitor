@@ -1,7 +1,7 @@
 """Banco local (SQLite) do Mercado PW: anúncios, itens das contas, tabela de valores, buscas e avisos.
 
-A tabela de valores, as buscas e as configurações também ficam no meus-dados.json, que vai pelo git
-para os outros PCs (ver Banco.sincronizar). O resto é de cada PC: as contas, o coletor lê do site.
+A tabela de valores, as buscas, os grupos, as favoritas e as configurações também ficam no meus-dados.json,
+que vai pelo git para os outros PCs (ver Banco.sincronizar). O resto é de cada PC: as contas, o coletor lê do site.
 """
 import hashlib
 import json
@@ -79,6 +79,19 @@ CREATE TABLE IF NOT EXISTS grupos (
     id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, itens TEXT NOT NULL,
     criado_em TEXT NOT NULL, atualizado_em TEXT NOT NULL
 );
+
+-- Favoritas: id = o da conta. Vão no meus-dados.json; a situação e os avisos delas são de cada PC.
+CREATE TABLE IF NOT EXISTS favoritas (
+    id INTEGER PRIMARY KEY, nome TEXT NOT NULL, criado_em TEXT NOT NULL, atualizado_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS situacao_favoritas (
+    id INTEGER PRIMARY KEY, situacao TEXT NOT NULL, desde TEXT NOT NULL,  -- a_venda, confirmando ou retirada
+    sumiu_em TEXT, visto_antes TEXT, tentativas INTEGER NOT NULL DEFAULT 0, proxima_em TEXT
+);
+CREATE TABLE IF NOT EXISTS avisos_favoritas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, anuncio_id INTEGER NOT NULL, nome TEXT NOT NULL, evento TEXT NOT NULL,
+    texto TEXT NOT NULL, preco INTEGER, quando TEXT NOT NULL
+);
 """
 
 PADROES = {
@@ -95,9 +108,10 @@ LIMITES = {'intervalo_s': (30, 3600), 'pausa_s': (1, 60), 'leituras_simultaneas'
 SO_NESTE_PC = frozenset({'largura_filtros', 'largura_detalhes', 'detalhes_recolhidos',
                          'telegram_token', 'telegram_chat', 'discord_webhook'})
 COMPARTILHADAS = tuple(k for k in PADROES if k not in SO_NESTE_PC)
-# Versão do meus-dados.json. A 2 tem valores de grupo; o arquivo só é gravado como 2 quando tem algum, para
-# um PC com o programa antigo recusar o arquivo (e pedir para atualizar) em vez de perder esses valores.
-FORMATO_DADOS = 2
+# Versão do meus-dados.json. A 2 tem valores de grupo, e a 3 tem favoritas; o arquivo só é gravado numa versão
+# quando tem o que ela trouxe, para um PC com o programa antigo recusar o arquivo (e pedir para atualizar) em vez
+# de perder esses dados.
+FORMATO_DADOS = 3
 _GRAVAR_CONFIG = ('INSERT INTO config(chave, valor) VALUES (?, ?) '
                   'ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor')
 
@@ -299,10 +313,17 @@ def _normalizar(dados):
         if nome := str(g.get('nome') or '').strip():
             grupos.append({'id': _inteiro(g.get('id')), 'nome': nome, 'itens': _itens_do_grupo(g.get('itens')),
                            'criado_em': str(g.get('criado_em') or ''), 'atualizado_em': str(g.get('atualizado_em') or '')})
+    favoritas = {}
+    for f in _dicts(dados.get('favoritas')):  # o id é o da conta: não se renumera, e repetida fica uma só
+        rid, nome = _inteiro(f.get('id')), str(f.get('nome') or '').strip()
+        if rid and nome and rid not in favoritas:
+            favoritas[rid] = {'id': rid, 'nome': nome, 'criado_em': str(f.get('criado_em') or ''),
+                              'atualizado_em': str(f.get('atualizado_em') or '')}
     _numerar(valores)
     _numerar(buscas)
     _numerar(grupos)
-    return {'configuracoes': cfg, 'valores': valores, 'buscas': buscas, 'grupos': grupos}
+    return {'configuracoes': cfg, 'valores': valores, 'buscas': buscas, 'grupos': grupos,
+            'favoritas': sorted(favoritas.values(), key=lambda f: f['id'])}
 
 
 def _itens_do_grupo(lista):
@@ -321,24 +342,30 @@ def dados_normalizados(dados):
 
 
 def _hash(dados):
+    if not dados.get('favoritas'):  # sem favoritas, o mesmo hash de antes delas: nada conta como mudado
+        dados = {k: v for k, v in dados.items() if k != 'favoritas'}
     return hashlib.sha1(json.dumps(dados, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
 
 def _vazio(dados):
-    """Sem nada do usuário: nenhum valor, nenhuma busca, nenhum grupo e as configurações padrão."""
-    return (not dados['valores'] and not dados['buscas'] and not dados['grupos']
+    """Sem nada do usuário: nenhum valor, nenhuma busca, nenhum grupo, nenhuma favorita e as configurações padrão."""
+    return (not dados['valores'] and not dados['buscas'] and not dados['grupos'] and not dados['favoritas']
             and dados['configuracoes'] == {k: PADROES[k] for k in COMPARTILHADAS})
 
 
 def _formatar(dados):
-    """Texto do meus-dados.json, com uma linha por valor, busca e grupo, para o git mostrar e juntar as mudanças."""
+    """Texto do meus-dados.json, com uma linha por valor, busca, grupo e favorita, para o git mostrar e juntar as mudanças.
+
+    As favoritas só aparecem no arquivo quando há alguma (sem elas, o arquivo fica como antes).
+    """
     def lista(linhas):
         return '[\n' + ',\n'.join('    ' + json.dumps(l, ensure_ascii=False) for l in linhas) + '\n  ]' if linhas else '[]'
     cfg = ',\n'.join(f'    {json.dumps(k)}: {json.dumps(v)}' for k, v in dados['configuracoes'].items())
-    formato = 2 if any(v.get('grupo_id') for v in dados['valores']) else 1  # ver FORMATO_DADOS
+    formato = 3 if dados['favoritas'] else 2 if any(v.get('grupo_id') for v in dados['valores']) else 1  # ver FORMATO_DADOS
+    favoritas = f',\n  "favoritas": {lista(dados["favoritas"])}' if dados['favoritas'] else ''
     return (f'{{\n  "formato": {formato},\n  "configuracoes": {{\n{cfg}\n  }},\n'
             f'  "valores": {lista(dados["valores"])},\n  "buscas": {lista(dados["buscas"])},\n'
-            f'  "grupos": {lista(dados["grupos"])}\n}}\n')
+            f'  "grupos": {lista(dados["grupos"])}{favoritas}\n}}\n')
 
 
 class Banco:
@@ -492,6 +519,7 @@ class Banco:
             'buscas': [{**dict(r), 'filtros': json.loads(r['filtros'])} for r in self.con.execute(
                 'SELECT id, nome, avisar, lucro_min_rs, lucro_min_pct, criado_em, atualizado_em, filtros FROM buscas')],
             'grupos': self.grupos(),
+            'favoritas': [dict(r) for r in self.con.execute('SELECT id, nome, criado_em, atualizado_em FROM favoritas')],
         })
 
     def _importar(self, dados):
@@ -517,6 +545,11 @@ class Banco:
             depois = {b['id']: b['criado_em'] for b in dados['buscas']}
             con.executemany('DELETE FROM avisos WHERE busca_id = ?',
                             [(bid,) for bid, criada in antes.items() if depois.get(bid) != criada])
+            con.execute('DELETE FROM favoritas')
+            con.executemany('INSERT INTO favoritas (id, nome, criado_em, atualizado_em) VALUES (?,?,?,?)',
+                            [(f['id'], f['nome'], f['criado_em'], f['atualizado_em']) for f in dados['favoritas']])
+            # a situação é deste PC; sai a das contas que deixaram de ser favoritas (desmarcadas ou vendidas no outro PC)
+            con.execute('DELETE FROM situacao_favoritas WHERE id NOT IN (SELECT id FROM favoritas)')
             con.executemany(_GRAVAR_CONFIG, [(k, json.dumps(v)) for k, v in dados['configuracoes'].items()]
                             + [('_dados_hash', json.dumps(_hash(dados)))])
         self.recalcular()
@@ -622,7 +655,7 @@ class Banco:
             sumiram = [rid for rid, r in antes.items() if r['ativo'] and rid not in anuncios]
             con.executemany('UPDATE anuncios SET ativo=0 WHERE id=?', [(rid,) for rid in sumiram])
         return {'primeira': primeira, 'novos': novos, 'baixaram': baixaram,
-                'reativados': reativados, 'removidos': len(sumiram)}
+                'reativados': reativados, 'removidos': len(sumiram), 'sumiram': sumiram}
 
     def anuncio(self, anuncio_id):
         r = self.con.execute('SELECT * FROM anuncios WHERE id = ?', (anuncio_id,)).fetchone()
@@ -817,6 +850,8 @@ class Banco:
         kk, detalhes = valor.avaliar(itens, self._tabela()) if lida else (None, [])
         return {
             'anuncio': self._publico(a, cfg, kk),
+            'favorita': anuncio_id in self.ids_favoritas(),
+            'situacao': self.situacao_favorita(anuncio_id),
             'itens': [{'secao': r['secao'], 'item_id': r['item_id'], 'nome': r['nome'], 'refino': r['refino'],
                        'qtd': r['qtd'], 'efeito': r['efeito'], 'tooltip': r['tooltip_id']} for r in itens],
             'tooltips': tooltips,
@@ -824,15 +859,13 @@ class Banco:
         }
 
     def limpar_antigos(self, dias=7):
-        """Apaga os itens de anúncios que saíram do ar há mais de `dias` dias."""
+        """Apaga os itens de anúncios que saíram do ar há mais de `dias` dias. Os das favoritas ficam."""
         limite = (datetime.now() - timedelta(days=dias)).isoformat(timespec='seconds')
         with self._transacao() as con:
             velhos = [r[0] for r in con.execute(
-                'SELECT id FROM anuncios WHERE ativo = 0 AND ultimo_visto < ? AND itens_lidos_em IS NOT NULL',
-                (limite,))]
-            con.executemany('DELETE FROM itens WHERE anuncio_id = ?', [(i,) for i in velhos])
-            con.executemany('UPDATE anuncios SET itens_lidos_em = NULL, preco_lido = NULL, valor_kk = NULL, '
-                            'destaques = NULL WHERE id = ?', [(i,) for i in velhos])
+                'SELECT id FROM anuncios WHERE ativo = 0 AND ultimo_visto < ? AND itens_lidos_em IS NOT NULL '
+                'AND id NOT IN (SELECT id FROM favoritas)', (limite,))]
+            _apagar_itens(con, velhos)
             if velhos:
                 con.execute('DELETE FROM tooltips WHERE id NOT IN '
                             '(SELECT DISTINCT tooltip_id FROM itens WHERE tooltip_id IS NOT NULL)')
@@ -942,9 +975,11 @@ class Banco:
             f'ORDER BY {ORDENS["preco"] if por_itens else ORDENS.get(ordem, ORDENS["lucro_rs"])}', p).fetchall()
 
         qtds = self._quantidades(filtros_item, p) if condicoes else {}
+        favoritas = self.ids_favoritas()
         contas = []
         for r in linhas:
             conta = self._publico(r, cfg)
+            conta['favorita'] = r['id'] in favoritas
             conta['a_confirmar'] = bool(condicoes or algum) and not conta['lida']
             # unidades de cada item pesquisado (na ordem das condições); None = itens ainda não lidos
             conta['qtd_busca'] = qtds.get(r['id'], [0] * len(condicoes)) if condicoes and conta['lida'] else None
@@ -1170,6 +1205,100 @@ class Banco:
                     c['todos'] = todos
         return condicoes
 
+    # -------------------------------------------------------------- favoritas
+
+    def ids_favoritas(self):
+        return {r[0] for r in self.con.execute('SELECT id FROM favoritas')}
+
+    def favoritas(self):
+        """As favoritas com a situação neste PC e o anúncio (None se este PC nunca viu a conta).
+
+        Primeiro as que estão confirmando venda; depois as que mudaram de situação por último.
+        """
+        cfg = self.config()
+        saida = []
+        for f in self.con.execute('SELECT f.id, f.nome, f.criado_em, s.situacao, s.desde, s.sumiu_em, s.visto_antes, '
+                                  's.tentativas, s.proxima_em FROM favoritas f '
+                                  'LEFT JOIN situacao_favoritas s ON s.id = f.id').fetchall():
+            a = self.anuncio(f['id'])
+            situacao = {k: f[k] for k in ('situacao', 'desde', 'sumiu_em', 'visto_antes', 'tentativas', 'proxima_em')}
+            saida.append({'id': f['id'], 'nome': a['nome'] if a else f['nome'], 'criado_em': f['criado_em'],
+                          'situacao': situacao if f['situacao'] else None,
+                          'anuncio': self._publico(a, cfg) if a else None,
+                          'ultimo_visto': a['ultimo_visto'] if a else None})
+        saida.sort(key=lambda x: x['situacao']['desde'] if x['situacao'] else x['criado_em'], reverse=True)
+        saida.sort(key=lambda x: (x['situacao'] or {}).get('situacao') != 'confirmando')
+        return saida
+
+    def situacao_favorita(self, anuncio_id):
+        r = self.con.execute('SELECT * FROM situacao_favoritas WHERE id = ?', (anuncio_id,)).fetchone()
+        return dict(r) if r else None
+
+    def marcar_favorita(self, anuncio_id):
+        """Marca a conta como favorita; o nome vem do anúncio. Uma que já saiu do ar começa conferindo se foi vendida."""
+        a = self.anuncio(anuncio_id)
+        if a is None:
+            raise KeyError(anuncio_id)
+        quando = agora()
+        with self._mudando_dados(), self._transacao() as con:
+            if con.execute('SELECT 1 FROM favoritas WHERE id = ?', (anuncio_id,)).fetchone():
+                return
+            con.execute('INSERT INTO favoritas (id, nome, criado_em, atualizado_em) VALUES (?,?,?,?)',
+                        (anuncio_id, a['nome'], quando, quando))
+            con.execute('DELETE FROM situacao_favoritas WHERE id = ?', (anuncio_id,))
+            if a['ativo']:
+                con.execute("INSERT INTO situacao_favoritas (id, situacao, desde) VALUES (?, 'a_venda', ?)",
+                            (anuncio_id, quando))
+            else:
+                con.execute("INSERT INTO situacao_favoritas (id, situacao, desde, sumiu_em, visto_antes, proxima_em) "
+                            "VALUES (?, 'confirmando', ?, ?, ?, ?)", (anuncio_id, quando, quando, a['ultimo_visto'], quando))
+
+    def desmarcar_favorita(self, anuncio_id):
+        with self._mudando_dados(), self._transacao() as con:
+            con.execute('DELETE FROM favoritas WHERE id = ?', (anuncio_id,))
+            con.execute('DELETE FROM situacao_favoritas WHERE id = ?', (anuncio_id,))
+
+    def esquecer_vendida(self, anuncio_id):
+        """Favorita vendida: deixa de ser favorita (também no meus-dados.json), e a situação e os itens dela são apagados.
+
+        ValueError se o meus-dados.json não aceita mudanças agora (erro ou conflito do git).
+        """
+        with self._mudando_dados(), self._transacao() as con:
+            con.execute('DELETE FROM favoritas WHERE id = ?', (anuncio_id,))
+            con.execute('DELETE FROM situacao_favoritas WHERE id = ?', (anuncio_id,))
+            _apagar_itens(con, [anuncio_id])
+
+    def definir_situacao(self, anuncio_id, situacao, sumiu_em=None, visto_antes=None, proxima_em=None):
+        """Nova situação de uma favorita neste PC. False se ela deixou de ser favorita nesse meio-tempo."""
+        with self._transacao() as con:
+            if not con.execute('SELECT 1 FROM favoritas WHERE id = ?', (anuncio_id,)).fetchone():
+                return False
+            con.execute('INSERT OR REPLACE INTO situacao_favoritas (id, situacao, desde, sumiu_em, visto_antes, '
+                        'tentativas, proxima_em) VALUES (?,?,?,?,?,0,?)',
+                        (anuncio_id, situacao, agora(), sumiu_em, visto_antes, proxima_em))
+            return True
+
+    def agendar_busca_de_venda(self, anuncio_id, tentativas, proxima_em):
+        with self._transacao() as con:
+            con.execute('UPDATE situacao_favoritas SET tentativas = ?, proxima_em = ? WHERE id = ?',
+                        (tentativas, proxima_em, anuncio_id))
+
+    def buscas_de_venda(self, ate=None):
+        """Favoritas confirmando venda cuja próxima busca no histórico está na hora (até `ate`), as mais atrasadas antes."""
+        return [dict(r) for r in self.con.execute(
+            "SELECT s.*, COALESCE(a.nome, f.nome) AS nome FROM situacao_favoritas s JOIN favoritas f ON f.id = s.id "
+            "LEFT JOIN anuncios a ON a.id = s.id WHERE s.situacao = 'confirmando' AND s.proxima_em <= ? "
+            "ORDER BY s.proxima_em", (ate or agora(),))]
+
+    def proxima_busca_de_venda(self):
+        """Quando é a próxima busca no histórico (ISO), ou None."""
+        return self.con.execute("SELECT MIN(proxima_em) FROM situacao_favoritas WHERE situacao = 'confirmando'").fetchone()[0]
+
+    def registrar_aviso_favorita(self, anuncio_id, nome, evento, texto, preco=None):
+        with self._transacao() as con:
+            con.execute('INSERT INTO avisos_favoritas (anuncio_id, nome, evento, texto, preco, quando) VALUES (?,?,?,?,?,?)',
+                        (anuncio_id, nome, evento, texto, preco, agora()))
+
     # -------------------------------------------------------------- buscas salvas e avisos
 
     def buscas(self):
@@ -1214,10 +1343,16 @@ class Banco:
             return cur.rowcount == 1
 
     def avisos(self, limite=100):
-        return [dict(r) for r in self.con.execute(
+        """Os últimos avisos, das buscas e das favoritas juntos, dos mais recentes aos mais antigos."""
+        das_buscas = [dict(r) for r in self.con.execute(
             'SELECT v.*, b.nome AS busca, a.nome AS conta, a.classe, a.nivel, a.ativo '
             'FROM avisos v JOIN buscas b ON b.id = v.busca_id LEFT JOIN anuncios a ON a.id = v.anuncio_id '
             'ORDER BY v.id DESC LIMIT ?', (limite,))]
+        das_favoritas = [{**dict(r), 'busca_id': None, 'busca': '★ Favorita', 'lucro_rs': None} for r in self.con.execute(
+            'SELECT v.id, v.anuncio_id, v.evento, v.texto AS motivo, v.preco, v.quando, v.nome AS conta, a.classe, '
+            'a.nivel, a.ativo FROM avisos_favoritas v LEFT JOIN anuncios a ON a.id = v.anuncio_id '
+            'ORDER BY v.id DESC LIMIT ?', (limite,))]
+        return sorted(das_buscas + das_favoritas, key=lambda v: v['quando'], reverse=True)[:limite]
 
     def ultimos_avisos_por_busca(self):
         return {r[0]: r[1] for r in self.con.execute('SELECT busca_id, MAX(quando) FROM avisos GROUP BY busca_id')}
@@ -1225,3 +1360,10 @@ class Banco:
 
 def _ha_24h():
     return (datetime.now() - timedelta(hours=24)).isoformat(timespec='seconds')
+
+
+def _apagar_itens(con, ids):
+    """Apaga os itens lidos das contas (os tooltips que ficarem sem uso saem no próximo limpar_antigos)."""
+    con.executemany('DELETE FROM itens WHERE anuncio_id = ?', [(i,) for i in ids])
+    con.executemany('UPDATE anuncios SET itens_lidos_em = NULL, preco_lido = NULL, valor_kk = NULL, '
+                    'destaques = NULL WHERE id = ?', [(i,) for i in ids])

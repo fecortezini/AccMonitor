@@ -281,6 +281,25 @@ input::placeholder { color: #566077; }
 .det-vazio svg { width: 34px; height: 34px; color: #3a4257; }
 .det-vazio b { color: var(--tx2); font-size: 14px; }
 .aguardando { background: var(--s2); border: 1px dashed var(--ln2); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; color: var(--tx2); }
+.aguardando.confirmando { border-color: color-mix(in srgb, var(--ouro) 45%, transparent); }
+
+/* favoritas: a estrela na lista e nos detalhes, e a aba (a lista dela e o mesmo painel de detalhes da aba Contas) */
+#v-favoritas { grid-template-columns: minmax(0, 1fr) var(--w-detalhes); }
+#v-favoritas .detalhes { border-left: 1px solid var(--ln); }
+#v-favoritas #recolher { display: none; }
+.tabela th.col-estrela, .tabela td.col-estrela { width: 1%; padding-right: 0; }
+.estrela { display: inline-flex; padding: 2px; color: var(--tx3); opacity: .45; }
+.tabela tbody tr:hover .estrela { opacity: .8; }
+.estrela:hover, .tabela tbody tr:hover .estrela:hover { color: var(--ouro2); opacity: 1; }
+.estrela.on, .tabela tbody tr:hover .estrela.on { color: var(--ouro); opacity: 1; }
+.estrela.on svg, .btn.favoritar.on svg { fill: currentColor; }
+.btn.favoritar.on { color: var(--ouro2); border-color: color-mix(in srgb, var(--ouro) 45%, transparent); }
+.det-topo #favoritar { margin-left: auto; }
+.det-topo #favoritar + .icone-btn { margin-left: 0; }
+.situacao.confirmando { color: var(--ouro2); }
+.situacao.retirada, .situacao.vendida { color: var(--tx3); }
+.situacao.recente { color: var(--ok); font-weight: 600; }
+.tabela tbody tr.fora .nome { color: var(--tx2); }
 
 /* ------------------------------------------------------------ páginas (valores, buscas) */
 .pagina { overflow-y: auto; }

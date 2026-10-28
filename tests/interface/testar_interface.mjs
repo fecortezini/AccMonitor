@@ -190,6 +190,34 @@ try {
   await clicar('.aba[data-aba="buscas"]');
   await esperar(1000);
   await foto('b1-buscas');
+
+  // Favoritas: a estrela da lista marca, a aba mostra a situação de cada uma e os detalhes; no fim, o botão
+  // "Favorita" dos detalhes desmarca a que o teste marcou (nada fica salvo)
+  await clicar('.aba[data-aba="contas"]');
+  await clicar('#limpar-filtros');
+  await esperar(1500);
+  const marcada = await js(`document.querySelector('#linhas tr .estrela:not(.on)')?.dataset.estrela || null`);
+  if (marcada) {
+    await clicar(`#linhas .estrela[data-estrela="${marcada}"]`);
+    await esperar(1200);
+    if (!await js(`document.querySelector('#linhas .estrela[data-estrela="${marcada}"]').classList.contains('on')`)) {
+      throw new Error('a estrela da lista não marcou a favorita');
+    }
+    await foto('f1-estrela-na-lista');
+  }
+  await clicar('.aba[data-aba="favoritas"]');
+  await esperar(1500);
+  await foto('f2-favoritas');
+  if (marcada) {
+    await clicar(`#linhas-fav tr[data-id="${marcada}"]`);
+    await esperar(1200);
+    await foto('f3-favorita-nos-detalhes');
+    await clicar('#favoritar');
+    await esperar(1500);
+    if (await js(`!!document.querySelector('#linhas-fav tr[data-id="${marcada}"]')`)) {
+      throw new Error('o botão dos detalhes não desmarcou a favorita');
+    }
+  }
 } catch (e) {
   console.log('FALHOU:', e.message);
   await foto('zz-falha').catch(() => {});

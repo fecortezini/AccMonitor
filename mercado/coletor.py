@@ -34,6 +34,16 @@ LANCES_FALHA_S = 300        # uma conta cuja página falhou só é tentada de no
 # Ritmo da leitura, para estimar quanto falta: as contas lidas nos últimos 5 min (pelo menos 5 contas e 1 min)
 RITMO_S = 300
 RITMO_MIN_CONTAS = 5
+# Favoritas que saem da lista (docs/superpowers/specs/2026-10-28-favoritas-design.md, seção 4): o nome é procurado
+# no histórico de vendas estes minutos depois de ela sumir; sem venda na última busca, foi retirada.
+BUSCAS_DE_VENDA_MIN = (1, 3, 10)
+VENDA_FOLGA_MIN = 5         # a data da venda (sem segundos) pode ficar até isto antes da última vez que a conta foi vista
+VENDAS_A_CONFERIR = 3       # vendas com o mesmo nome cuja página é aberta para conferir o id da conta
+BUSCA_FALHOU_S = 120        # sem conexão: tenta de novo depois disto, sem contar como tentativa
+
+
+def _iso(quando):
+    return quando.isoformat(timespec='seconds')
 
 
 class Fila:
@@ -146,6 +156,7 @@ class Coletor(threading.Thread):
         self._da_busca = set()      # contas que subiram para BUSCA pelos filtros da tela
         self._lance_falhou = {}     # rid -> quando a leitura dos lances falhou
         self._proximo_lance_geral = 0.0
+        self._primeira_lista = True  # a primeira consulta depois de abrir: favorita que sumiu não ganha o aviso "saiu"
 
     # -------------------------------------------------------------- controle
 
@@ -191,6 +202,10 @@ class Coletor(threading.Thread):
             self._conta_aberta = int(rid)
             self._acordar.set()
 
+    def favoritas_mudaram(self):
+        """Uma conta foi marcada como favorita (chamado de outra thread): se já saiu do ar, a busca da venda é já."""
+        self._acordar.set()
+
     def run(self):
         while not self._parar.is_set():
             try:
@@ -223,6 +238,10 @@ class Coletor(threading.Thread):
         if not self.fila:
             self.preencher_fila()
         pronto = self._ultimo_detalhe + cfg['pausa_s']
+        vendas = self.banco.buscas_de_venda()  # poucas e com hora marcada: passam na frente da fila
+        if vendas and time.monotonic() >= pronto:
+            self.buscar_venda(vendas[0])
+            return
         if self.fila and time.monotonic() >= pronto:
             self.ler_proxima()
             return
@@ -230,10 +249,13 @@ class Coletor(threading.Thread):
         if lance is not None and time.monotonic() >= pronto:
             self.ler_lance(*lance)
             return
-        if self.fila or lance is not None:
+        if self.fila or lance is not None or vendas:
             proxima = min(self._proxima_lista, pronto)
         else:  # confere de novo em pouco tempo: os lances das contas na tela envelhecem
             proxima = min(self._proxima_lista, time.monotonic() + 5)
+        if venda_em := self.banco.proxima_busca_de_venda():
+            falta = (datetime.fromisoformat(venda_em) - datetime.now()).total_seconds()
+            proxima = min(proxima, max(pronto, time.monotonic() + falta))
         self._acordar.wait(max(0.05, proxima - time.monotonic()))
 
     # -------------------------------------------------------------- lista e catálogo
@@ -282,6 +304,7 @@ class Coletor(threading.Thread):
         if eventos or mudou['removidos']:
             log.info('Lista: %d novos, %d reanunciados, %d mais baratos, %d removidos', len(mudou['novos']),
                      len(mudou['reativados']), len(mudou['baixaram']), mudou['removidos'])
+        self.conferir_favoritas(mudou)
         self.estado.fila = len(self.fila)
         self.estado.mudou()
 
@@ -351,7 +374,7 @@ class Coletor(threading.Thread):
         for anuncio, (lido, erro) in zip(lote, resultados):
             itens, lance = lido or (None, None)
             if lance is not None:  # a página que veio pelos itens também traz os lances
-                self.banco.gravar_lance(anuncio['id'], lance)
+                self._gravar_lance(anuncio['id'], lance)
             self._guardar(anuncio, itens, erro, simultaneas)
 
     def _ler_lote(self, ids):
@@ -417,13 +440,14 @@ class Coletor(threading.Thread):
     def _lance_a_ler(self):
         """(conta, geral) cujos lances estão na hora de reler, ou None.
 
-        Primeiro a conta aberta e as primeiras da busca na tela: cada uma a cada 1 min, ou mais espaçado
-        se forem muitas, para não passar de LANCES_POR_MINUTO páginas. Depois, uma das outras a cada
+        Primeiro a conta aberta, as favoritas e as primeiras da busca na tela: cada uma a cada 1 min, ou mais
+        espaçado se forem muitas, para não passar de LANCES_POR_MINUTO páginas. Depois, uma das outras a cada
         LANCES_GERAL_S, a de lances vistos há mais tempo.
         """
         agora = time.monotonic()
         falhas = {rid for rid, quando in self._lance_falhou.items() if agora - quando < LANCES_FALHA_S}
-        tela = [rid for rid in dict.fromkeys([self._conta_aberta] + self._na_tela) if rid and rid not in falhas]
+        favoritas = sorted(self.banco.ids_favoritas())
+        tela = [rid for rid in dict.fromkeys([self._conta_aberta] + favoritas + self._na_tela) if rid and rid not in falhas]
         intervalo = max(LANCES_MIN_S, len(tela) * 60 / LANCES_POR_MINUTO)
         limite = (datetime.now() - timedelta(seconds=intervalo)).isoformat(timespec='seconds')
         if (rid := self.banco.lance_velho(tela, limite)) is not None:
@@ -448,11 +472,128 @@ class Coletor(threading.Thread):
             return
         self._lance_falhou.pop(rid, None)
         antes = self.banco.anuncio(rid)
-        if self.banco.gravar_lance(rid, lance):
-            log.info('Lance novo na conta %s: %d pendentes, o maior de %s', rid, lance['pendentes'],
-                     avisos.tcc(lance['maior']))
+        self._gravar_lance(rid, lance)
         if antes and (antes['lances'], antes['maior_lance']) != (lance['pendentes'], lance['maior']):
             self.estado.mudou()  # a lista mostra o lance novo
+
+    def _gravar_lance(self, rid, lance):
+        """Grava os lances lidos; um lance novo numa favorita é avisado."""
+        if not self.banco.gravar_lance(rid, lance):
+            return
+        log.info('Lance novo na conta %s: %d pendentes, o maior de %s', rid, lance['pendentes'], avisos.tcc(lance['maior']))
+        if rid in self.banco.ids_favoritas():
+            n = lance['pendentes']
+            self._avisar_favorita(rid, 'lance', f"lance novo: {n} {'lance' if n == 1 else 'lances'}, "
+                                                f"o maior de {avisos.tcc(lance['maior'])}", lance['maior'])
+
+    # -------------------------------------------------------------- favoritas
+
+    def conferir_favoritas(self, mudou):
+        """Depois de cada consulta da lista: a situação de cada favorita neste PC, e os avisos.
+
+        Uma que sumiu da lista passa a "confirmando", e o nome dela é procurado no histórico de vendas (buscar_venda).
+        Na primeira consulta depois de abrir o programa, ela não ganha o aviso "saiu do mercado": saiu com o programa
+        fechado, e o resultado da busca vem logo em seguida.
+        """
+        baixaram = {rid: (antes, depois) for rid, antes, depois in mudou['baixaram']}
+        for f in self.banco.favoritas():
+            rid, a = f['id'], f['anuncio']
+            situacao = f['situacao']['situacao'] if f['situacao'] else None
+            if situacao == 'vendida':  # o meus-dados.json não aceitou tirá-la das favoritas: tenta de novo
+                self._esquecer(rid)
+            elif a and a['ativo']:
+                if situacao != 'a_venda':
+                    self.banco.definir_situacao(rid, 'a_venda')
+                if situacao in ('confirmando', 'retirada'):
+                    log.info('Favorita %s (%s) anunciada de novo', f['nome'], rid)
+                    self._avisar_favorita(f, 'voltou', f"anunciada de novo por {avisos.tcc(a['preco'])}", a['preco'])
+                elif situacao == 'a_venda' and rid in baixaram:
+                    antes, depois = baixaram[rid]
+                    self._avisar_favorita(f, 'baixou', f'baixou de {avisos.tcc(antes)} para {avisos.tcc(depois)}', depois)
+            elif situacao in (None, 'a_venda'):
+                agora = datetime.now()
+                self.banco.definir_situacao(
+                    rid, 'confirmando', sumiu_em=_iso(agora), visto_antes=f['ultimo_visto'] or f['criado_em'],
+                    proxima_em=_iso(agora + timedelta(minutes=BUSCAS_DE_VENDA_MIN[0])))
+                log.info('Favorita %s (%s) saiu da lista; vou procurar a venda no histórico', f['nome'], rid)
+                if situacao == 'a_venda' and not self._primeira_lista:
+                    self._avisar_favorita(f, 'saiu', 'saiu do mercado, conferindo se foi vendida…', a['preco'] if a else None)
+        self._primeira_lista = False
+
+    def buscar_venda(self, f):
+        """Procura no histórico de vendas uma favorita que saiu da lista (f: de banco.buscas_de_venda).
+
+        Valem só as vendas com o nome exato e data a partir da última vez que ela foi vista (com folga); a página
+        de cada uma, até VENDAS_A_CONFERIR, diz se é mesmo esta conta (o id). Achou: vendida. Sem venda na última
+        busca: retirada. Falha de conexão ou página diferente do esperado não conta como busca.
+        """
+        rid, nome = f['id'], f['nome']
+        venda = None
+        try:
+            vendas = self.site.ler_historico(self.site.baixar(self.site.url_historico(nome)))
+            limite = datetime.fromisoformat(f['visto_antes']) - timedelta(minutes=VENDA_FOLGA_MIN)
+            candidatas = [v for v in vendas if v.nome == nome and v.quando >= limite][:VENDAS_A_CONFERIR]
+            for v in candidatas:
+                self._parar.wait(self.banco.config()['pausa_s'])
+                dados = self.site.ler_venda(self.site.baixar(self.site.URL_VENDA.format(v.venda)))
+                if dados['id'] == rid:
+                    venda = {**dados, 'venda': v.venda}
+                    break
+        except Exception as e:
+            log.warning('Não consegui procurar a venda da favorita %s (%s) no histórico: %s', nome, rid, e)
+            self.banco.agendar_busca_de_venda(rid, f['tentativas'], _iso(datetime.now() + timedelta(seconds=BUSCA_FALHOU_S)))
+            return
+        finally:
+            self._ultimo_detalhe = time.monotonic()
+        tentativas = f['tentativas'] + 1
+        log.info('Favorita %s (%s): %d venda(s) com o nome no histórico desde que sumiu; %s', nome, rid, len(candidatas),
+                 'vendida' if venda else f'nenhuma é dela ({tentativas}ª busca)')
+        if venda:
+            self._vendida(f, venda)
+        elif tentativas < len(BUSCAS_DE_VENDA_MIN):
+            proxima = datetime.fromisoformat(f['sumiu_em']) + timedelta(minutes=BUSCAS_DE_VENDA_MIN[tentativas])
+            self.banco.agendar_busca_de_venda(rid, tentativas, _iso(max(proxima, datetime.now())))
+        else:
+            if self.banco.definir_situacao(rid, 'retirada', sumiu_em=f['sumiu_em']):
+                self._avisar_favorita(rid, 'retirada', 'saiu do mercado sem venda')
+            self.estado.mudou()
+
+    def _vendida(self, f, venda):
+        """Avisa a venda e esquece a conta: o usuário não quer mais saber dela."""
+        if venda['lance']:
+            como = f"anunciada por {avisos.tcc(venda['anunciada'])}, lance aceito"
+        elif venda['anunciada'] != venda['preco']:
+            como = f"anunciada por {avisos.tcc(venda['anunciada'])}"
+        else:
+            como = 'pelo preço anunciado'
+        self._avisar_favorita(f['id'], 'vendida', f"vendida por {avisos.tcc(venda['preco'])} ({como})", venda['preco'],
+                              url=self.site.URL_VENDA.format(venda['venda']))
+        self._esquecer(f['id'])
+
+    def _esquecer(self, rid):
+        try:
+            self.banco.esquecer_vendida(rid)
+            log.info('Favorita %s vendida: saiu das favoritas, com os itens', rid)
+        except ValueError as e:  # o meus-dados.json está com erro: fica marcada, e a próxima consulta tenta de novo
+            log.warning('Não consegui tirar a favorita vendida %s das favoritas: %s', rid, e)
+            self.banco.definir_situacao(rid, 'vendida')
+        self.estado.mudou()
+
+    def _avisar_favorita(self, f, evento, motivo, preco=None, url=None):
+        """Aviso de uma favorita (f: dela em banco.favoritas, ou só o id), pelos mesmos canais das buscas."""
+        if not isinstance(f, dict):
+            f = next((x for x in self.banco.favoritas() if x['id'] == f), None)
+            if f is None:
+                return
+        a = f.get('anuncio')
+        classe = f"{a['classe']} {a['nivel']}" if a else ''
+        frase = motivo[:1].upper() + motivo[1:]
+        url = url or self.site.URL_CONTA.format(f['id'])
+        self.banco.registrar_aviso_favorita(f['id'], f['nome'], evento, motivo, preco)
+        texto = '\n'.join(p for p in ('★ Favorita', ' · '.join(p for p in (f['nome'], classe) if p), frase, url) if p)
+        log.info('Aviso: %s', texto.replace('\n', ' | '))
+        self.notificar(self.banco.config(), f"★ {f['nome']}", frase, classe, texto, url)
+        self.estado.mudou()
 
     # -------------------------------------------------------------- avisos
 

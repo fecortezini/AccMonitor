@@ -31,6 +31,7 @@
     <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8Z"/></symbol>
     <symbol id="i-box" viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.2 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17.2l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></symbol>
   </defs>
 </svg>
 
@@ -40,6 +41,7 @@
     <button class="aba on" data-aba="contas" role="tab"><svg class="ic"><use href="#i-list"/></svg>Contas <span class="contador" id="n-contas">…</span></button>
     <button class="aba" data-aba="valores" role="tab"><svg class="ic"><use href="#i-coins"/></svg>Tabela de valores</button>
     <button class="aba" data-aba="buscas" role="tab"><svg class="ic"><use href="#i-bell"/></svg>Buscas e avisos <span class="contador ouro" id="n-buscas" hidden></span></button>
+    <button class="aba" data-aba="favoritas" role="tab"><svg class="ic"><use href="#i-star"/></svg>Favoritas <span class="contador" id="n-favoritas" hidden></span></button>
   </nav>
   <div class="topo-dir">
     <button class="cotacao" data-config="rs_por_bi" title="Editar a cotação">1 bi <b id="c-bi">…</b></button>
@@ -122,7 +124,7 @@
     <div class="tabela-rolagem" id="rolagem">
       <table class="tabela">
         <thead><tr>
-          <th>Conta</th><th>Classe</th><th class="extra">Céu</th><th class="num" data-ordem="preco" title="Ordenar pelo menor preço">Preço</th>
+          <th class="col-estrela"></th><th>Conta</th><th>Classe</th><th class="extra">Céu</th><th class="num" data-ordem="preco" title="Ordenar pelo menor preço">Preço</th>
           <th class="num" id="col-por-un" data-ordem="preco_item" title="Preço dividido pela soma dos itens pesquisados (TCC por unidade). Embaixo, o mesmo com o lance mínimo. Clique para ver primeiro o menor." hidden>Por un.</th>
           <th id="col-pesquisados" data-ordem="itens" title="Unidades de cada item pesquisado e, com mais de um, a soma. Clique para ver primeiro quem tem mais." hidden>Pesquisados</th>
           <th class="num extra" data-ordem="valor" title="Ordenar pelo maior valor estimado">Valor</th><th class="num" data-ordem="lucro_rs" title="Ordenar pelo maior lucro">Lucro</th><th>Destaques</th>
@@ -178,6 +180,23 @@
       </section>
     </div>
   </div>
+</main>
+
+<!-- ============================ FAVORITAS ============================ -->
+<!-- O painel de detalhes (#detalhes) é o mesmo da aba Contas: vem para cá quando esta aba abre (trocarAba). -->
+<main class="vista" id="v-favoritas">
+  <section class="lista painel">
+    <div class="lista-topo"><div id="resumo-fav" class="resumo">Carregando…</div></div>
+    <div class="tabela-rolagem">
+      <table class="tabela">
+        <thead><tr>
+          <th class="col-estrela"></th><th>Conta</th><th>Classe</th><th class="num">Preço</th><th>Situação</th><th>Desde</th>
+        </tr></thead>
+        <tbody id="linhas-fav"></tbody>
+      </table>
+      <div class="vazio" id="fav-vazia" hidden><b>Nenhuma favorita ainda.</b>Clique na ☆ ao lado do nome de uma conta, na aba Contas ou nos detalhes. O programa avisa quando ela baixar de preço, receber lance ou sair do mercado, e diz se foi vendida.</div>
+    </div>
+  </section>
 </main>
 
 <!-- ============================ JANELAS ============================ -->

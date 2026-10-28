@@ -1,7 +1,7 @@
 # Favoritas: desenho
 
 **Data:** 2026-10-28
-**Status:** aprovado no brainstorming, aguardando revisão do documento
+**Status:** aprovado (28/10), em implementação
 **Base:** o desenho do programa em `2026-09-21-mercado-pw-design.md`
 
 ## 1. Objetivo
@@ -11,7 +11,9 @@ Marcar contas como **favoritas** e deixar o programa acompanhando cada uma. Ele 
 1. **sai do mercado**, na hora, e depois diz o motivo: **vendida** (com o preço final) ou **retirada** pelo vendedor;
 2. **baixa de preço**;
 3. **recebe um lance novo**;
-4. **volta ao mercado**, pelo mesmo dono ou por quem comprou.
+4. **volta ao mercado** depois de retirada.
+
+**Uma conta vendida é esquecida** *(pedido do usuário, 28/10)*: depois do aviso de vendida, ela deixa de ser favorita (nos dois PCs, pelo Sincronizar), e a situação e os itens guardados dela são apagados. Só o aviso fica nos "Últimos avisos". Se o comprador anunciar a conta de novo, ela aparece na lista como qualquer outra, e não como favorita.
 
 ### Critérios de sucesso
 
@@ -19,7 +21,7 @@ Marcar contas como **favoritas** e deixar o programa acompanhando cada uma. Ele 
 - O aviso "saiu do mercado" chega na consulta da lista seguinte à saída (até "intervalo de consulta + ~5 s").
 - Uma venda é confirmada em ~1 a 2 min depois de a conta sumir. Uma retirada é confirmada em 10 min.
 - Nenhuma favorita vira "retirada" por falha de conexão ou bloqueio do site.
-- As favoritas valem nos dois PCs (pelo Sincronizar), e os detalhes de uma favorita vendida continuam abrindo com os itens.
+- As favoritas valem nos dois PCs (pelo Sincronizar), e os detalhes de uma favorita retirada continuam abrindo com os itens.
 - O acompanhamento acrescenta no máximo 1 ou 2 páginas por favorita que some. Os lances não aumentam o total de acessos.
 
 ### Fora do escopo
@@ -67,15 +69,14 @@ Cada PC descobre sozinho a situação pelo site. Tabela `situacao_favoritas`:
 | Campo | O que é |
 |---|---|
 | `id` | id da conta |
-| `situacao` | `a_venda`, `confirmando`, `vendida` ou `retirada` |
+| `situacao` | `a_venda`, `confirmando` ou `retirada` (uma vendida é apagada, seção 4.2) |
 | `desde` | quando entrou nessa situação |
 | `sumiu_em` | quando o programa percebeu que ela saiu da lista |
 | `visto_antes` | última vez vista na lista antes de sumir (o `ultimo_visto` do anúncio, ou o `criado_em` da favorita se este PC nunca a viu) |
 | `tentativas`, `proxima_em` | buscas no histórico já feitas e quando fazer a próxima |
-| `venda_id`, `venda_preco`, `venda_anunciada`, `venda_lance`, `venda_em` | a última venda confirmada. O `venda_lance` é 1 para "fechada por lance aceito". |
-| `mudou_em` | última mudança, para ordenar e destacar na aba |
 
-- **Quando ela volta ao mercado:** a situação volta a ser `a_venda`, e os campos da venda ficam guardados para mostrar "antes vendida por 42".
+- **A ordem e o destaque da aba** usam o `desde`.
+- **Quando ela volta ao mercado:** a situação volta a ser `a_venda`.
 - **Ao desmarcar a favorita:** a linha da situação é apagada.
 
 ### 3.3 Avisos das favoritas
@@ -87,8 +88,9 @@ Cada PC descobre sozinho a situação pelo site. Tabela `situacao_favoritas`:
 ### 3.4 Itens guardados
 
 - **Hoje:** o `limpar_antigos` apaga os itens das contas que saíram do ar há mais de 7 dias.
-- **Com as favoritas:** ele passa a pular as favoritas, e os detalhes continuam abrindo com os itens depois da venda.
+- **Com as favoritas:** ele passa a pular as favoritas, e os detalhes de uma retirada continuam abrindo com os itens.
 - **Ao desmarcar:** a conta volta à regra normal.
+- **Vendida:** os itens são apagados na hora, como o `limpar_antigos` faria.
 
 ## 4. Como descobrir o que aconteceu
 
@@ -105,7 +107,8 @@ Cada PC descobre sozinho a situação pelo site. Tabela `situacao_favoritas`:
 1. O coletor baixa `history?game=pw187&q={nome}&period=90&sort=recent`.
 2. **Ele só considera** as linhas com o nome **exatamente igual** (o `q` pode trazer nomes parecidos) e data maior ou igual a `visto_antes` − 5 min. A folga cobre a data do site, que vem sem segundos, e a diferença de relógio. A data também impede de confundir com uma venda antiga da mesma conta, como as duas da Bruxinha.
 3. **Para cada venda considerada**, da mais recente para a mais antiga, até 3, ele abre `/pw187/vendida/{venda}` e lê o ID:
-   - **ID igual ao da conta:** a situação vira `vendida`, com os dados da venda, e ele avisa: **"★ {nome} vendida por {preço} (anunciada por {anunciada}, lance aceito)"**. O "lance aceito" só aparece quando for o caso, e clicar no aviso abre a página da venda.
+   - **ID igual ao da conta:** ele avisa **"★ {nome} vendida por {preço} (anunciada por {anunciada}, lance aceito)"**. O "lance aceito" só aparece quando for o caso, e clicar no aviso abre a página da venda. Depois **esquece a conta**: ela sai das favoritas (e do `meus-dados.json`), e a situação e os itens dela são apagados.
+   - **Venda direta:** a página da venda não tem o "foi anunciada por". Nesse caso, a anunciada é o próprio preço e não houve lance.
    - **ID diferente:** passa para a próxima venda.
 4. **Nenhuma venda confirmada:**
    - antes da 3ª tentativa: `tentativas` + 1 e agenda a próxima;
@@ -124,7 +127,7 @@ Cada PC descobre sozinho a situação pelo site. Tabela `situacao_favoritas`:
 | Acontecimento | De onde vem | Aviso |
 |---|---|---|
 | Baixou de preço | `baixaram` do `atualizar_lista` | ★ {nome} baixou de {antes} para {depois} |
-| Voltou ao mercado | `reativados` do `atualizar_lista`, ou uma favorita em `confirmando`, `vendida` ou `retirada` que reaparece na lista | ★ {nome} anunciada de novo por {preço}, mais "(antes vendida por {venda_preco})" se houver venda guardada. As tentativas pendentes são canceladas. |
+| Voltou ao mercado | uma favorita em `confirmando` ou `retirada` que reaparece na lista (`reativados` do `atualizar_lista`) | ★ {nome} anunciada de novo por {preço}. As tentativas pendentes são canceladas. |
 | Lance novo | `gravar_lance` devolve verdadeiro (maior valor ou mais lances) | ★ {nome}: {n} lances, maior {valor} |
 
 - **Lances das favoritas:** elas entram no grupo relido de perto (`_lance_a_ler`), logo depois da conta aberta e antes das contas da busca na tela.
@@ -142,16 +145,11 @@ Cada PC descobre sozinho a situação pelo site. Tabela `situacao_favoritas`:
 - **Detalhes:** um botão "☆ Favoritar" / "★ Favorita" no topo.
 - **Aba ★ Favoritas (N):** a 4ª aba, depois de Buscas e avisos, com a lista à esquerda e os detalhes à direita, como na aba Contas.
   - **Colunas:** ★ (desmarca), Conta (nome, classe e nível), Preço (com o lance mínimo embaixo), Lances, Situação e Desde.
-  - **Situação:**
-    - "À venda";
-    - "Confirmando venda…";
-    - "Vendida por 30 TCC · lance aceito";
-    - "Retirada";
-    - "À venda · voltou (antes vendida por 42)".
-  - **Ordem:** primeiro as em `confirmando`, depois por `mudou_em`, da mais recente para a mais antiga.
+  - **Situação:** "À venda", "Confirmando venda…" ou "Retirada". Uma vendida some da aba depois do aviso.
+  - **Ordem:** primeiro as em `confirmando`, depois por `desde`, da mais recente para a mais antiga.
   - **Destaque:** uma linha que mudou nos últimos 30 min fica destacada, como o lance novo na lista.
   - **Sem favoritas:** a aba explica como marcar ("clique na ☆ ao lado do nome de uma conta").
-- **Situação nos detalhes:** os detalhes de uma favorita mostram a situação no topo, por exemplo: "Vendida por 30 TCC em 28/10 13:42 · anunciada por 40 · lance aceito · ver a venda no site". O link abre a página da venda.
+- **Situação nos detalhes:** os detalhes de uma favorita que saiu do ar mostram a situação no topo: "Confirmando se foi vendida…" ou "Retirada em 28/10 12:44, sem venda".
 - **API:**
   - `GET /api/favoritas`: as favoritas com a situação e os dados do anúncio;
   - `POST /api/favoritas/{id}`: marca;
@@ -171,7 +169,7 @@ Cada PC descobre sozinho a situação pelo site. Tabela `situacao_favoritas`:
 
 ## 7. Testes
 
-No mesmo estilo dos atuais, com páginas reais salvas em `tests/paginas`: `historico_nome.html.gz` (busca por "Bruxinha", 2 vendas) e `vendida_47855.html.gz`.
+No mesmo estilo dos atuais, com páginas reais salvas em `tests/paginas`: `historico_bruxinha.html.gz` (busca por "Bruxinha", 2 vendas), `vendida_47855.html.gz` (lance aceito) e `vendida_47847.html.gz` (venda direta).
 
 - **`test_site`:** ler o histórico (nome, número da venda, preço e data) e a venda (ID, preço, anunciada por, lance aceito e data). Uma página sem `mkh-panel-contas` dá erro.
 - **`test_banco`:**
@@ -185,12 +183,12 @@ No mesmo estilo dos atuais, com páginas reais salvas em `tests/paginas`: `histo
   - marcar num PC e desmarcar no outro;
   - favoritas diferentes nos dois.
 - **`test_coletor`, com um site falso:**
-  - some → aviso "saiu" → 1ª busca acha → `vendida` e aviso;
+  - some → aviso "saiu" → 1ª busca acha → aviso de vendida, e a conta sai das favoritas, sem situação e sem itens;
   - 3 tentativas sem venda → `retirada` e aviso, com os tempos de 1, 3 e 10 min;
   - falha de conexão não conta como tentativa;
   - ID diferente faz testar a próxima venda;
   - venda com data anterior a `visto_antes` − 5 min é ignorada;
-  - baixou de preço, voltou ao mercado (com e sem venda guardada) e lance novo;
+  - baixou de preço, voltou ao mercado depois de retirada e lance novo;
   - ao abrir, favorita que não está na lista vai para `confirmando` sem o aviso "saiu";
   - lances: favoritas entram no grupo relido de perto.
 - **`test_servidor`:** as rotas novas e `favorita` em `/api/conta`.
@@ -199,7 +197,7 @@ No mesmo estilo dos atuais, com páginas reais salvas em `tests/paginas`: `histo
 ## 8. Limitações conhecidas
 
 - **Se o comprador trocar o nome** da conta, a venda não é encontrada no histórico e ela aparece como `retirada`.
-- **Venda e novo anúncio com este PC fechado:** se, quando ele abre, a conta já tiver sido vendida e anunciada de novo, ele vê só o preço novo. A venda do meio passa despercebida.
+- **Venda e novo anúncio com este PC fechado:** se, quando ele abre, a conta já tiver sido vendida e anunciada de novo, ele vê só o preço novo. A venda do meio passa despercebida e ela continua favorita.
 - **Horário:** as datas do site estão no horário de Brasília. O desenho supõe que o relógio do PC também está, como hoje.
 
 ## 9. Documentação
