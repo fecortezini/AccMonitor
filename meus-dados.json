@@ -4,7 +4,7 @@
     "intervalo_s": 60,
     "pausa_s": 2,
     "leituras_simultaneas": 2,
-    "rs_por_bi": 350.0,
+    "rs_por_bi": 250.0,
     "rs_por_tcc": 1.0,
     "aviso_windows": true,
     "aviso_bipes": true,
@@ -41,10 +41,11 @@
     {"id": 33, "item_id": 65877, "nome": "★★★Res. Celestial Anorm. Arcana", "refino_min": 0, "valor_kk": 750.0, "criado_em": "2026-09-27T13:52:13", "atualizado_em": "2026-09-27T13:52:13"},
     {"id": 35, "item_id": 59921, "nome": "★★★Elmo do Coração de Leão", "refino_min": 0, "valor_kk": 120.0, "criado_em": "2026-09-27T13:52:49", "atualizado_em": "2026-10-28T00:14:50"},
     {"id": 36, "item_id": 50148, "nome": "★★★Presas da Luz de Prata", "refino_min": 10, "valor_kk": 1000.0, "criado_em": "2026-09-27T13:52:57", "atualizado_em": "2026-09-27T13:52:57"},
-    {"id": 37, "item_id": 50264, "nome": "Essência Dracônica", "refino_min": 0, "valor_kk": 220.0, "criado_em": "2026-10-28T15:18:04", "atualizado_em": "2026-10-28T15:18:04"}
+    {"id": 37, "item_id": 50264, "nome": "Essência Dracônica", "refino_min": 0, "valor_kk": 1.0, "criado_em": "2026-10-28T15:18:04", "atualizado_em": "2026-10-29T19:44:09"},
+    {"id": 38, "item_id": 72573, "nome": "Cosmos", "refino_min": 12, "valor_kk": 6000.0, "criado_em": "2026-11-04T17:06:44", "atualizado_em": "2026-11-04T17:06:44"}
   ],
   "buscas": [
-    {"id": 1, "nome": "Combo Portal de Nuema e Relíquia Maravilha: Arma e Relíquia", "avisar": false, "lucro_min_rs": null, "lucro_min_pct": null, "criado_em": "2026-10-26T13:59:15", "atualizado_em": "2026-10-28T08:44:17", "filtros": {"nome": "", "classes": ["Andarilho", "Bárbaro", "Mercenário", "Místico", "Sacerdote", "Guerreiro"], "preco_min": null, "preco_max": 150, "nivel_min": null, "ceu": "", "itens": [{"grupo_id": 13, "nome": "Combo Portal de Nuema", "refino_min": 0, "qtd_min": 1, "onde": ""}, {"item_id": 50410, "nome": "Relíquia Maravilha: Arma", "refino_min": 0, "qtd_min": 1, "onde": ""}, {"item_id": 70020, "nome": "Relíquia Maravilha: Armadura", "refino_min": 0, "qtd_min": 1, "onde": ""}, {"item_id": 54687, "nome": "Relíquia Maravilha: Artefato", "refino_min": 0, "qtd_min": 1, "onde": ""}], "algum": [{"grupo_id": 4, "nome": "UP4", "refino_min": 0, "qtd_min": 1, "onde": ""}], "so_lucro": false, "so_novas": false, "ordem": "preco"}}
+    {"id": 1, "nome": "Combo Portal de Nuema e Relíquia Maravilha: Arma e Relíquia", "avisar": true, "lucro_min_rs": null, "lucro_min_pct": null, "criado_em": "2026-10-26T13:59:15", "atualizado_em": "2026-11-02T19:43:47", "filtros": {"nome": "", "classes": ["Andarilho", "Mercenário", "Bardo"], "preco_min": null, "preco_max": 120, "nivel_min": null, "ceu": "", "itens": [{"grupo_id": 13, "nome": "Combo Portal de Nuema", "refino_min": 0, "qtd_min": 1, "onde": ""}, {"item_id": 50410, "nome": "Relíquia Maravilha: Arma", "refino_min": 0, "qtd_min": 1, "onde": ""}, {"item_id": 70020, "nome": "Relíquia Maravilha: Armadura", "refino_min": 0, "qtd_min": 1, "onde": ""}, {"item_id": 54687, "nome": "Relíquia Maravilha: Artefato", "refino_min": 0, "qtd_min": 1, "onde": ""}], "algum": [{"grupo_id": 4, "nome": "UP4", "refino_min": 0, "qtd_min": 1, "onde": ""}], "so_lucro": false, "so_novas": false, "ordem": "itens"}}
   ],
   "grupos": [
     {"id": 3, "nome": "UP5", "itens": [{"item_id": 50147, "nome": "★★★Presas Celestes"}, {"item_id": 50148, "nome": "★★★Presas da Luz de Prata"}, {"item_id": 50153, "nome": "★★★Lágrima Retumbante"}, {"item_id": 50154, "nome": "★★★Lágrima de Palmeira"}, {"item_id": 50160, "nome": "★★★Purgador Imperial"}, {"item_id": 50165, "nome": "★★★Canção Negra do Crepúsculo"}, {"item_id": 50166, "nome": "★★★Melodia do Crepúsculo"}, {"item_id": 50171, "nome": "★★★Caçador Penado"}, {"item_id": 50172, "nome": "★★★Caçador da Primavera Celeste"}, {"item_id": 50183, "nome": "★★★Foice do Rio de Jade"}, {"item_id": 50195, "nome": "★★★Verdade Afortunada"}, {"item_id": 50196, "nome": "★★★Verdade de Princípios"}, {"item_id": 50201, "nome": "★★★Supremacia do Outono"}, {"item_id": 50202, "nome": "★★★Supremacia do Inverno"}, {"item_id": 50207, "nome": "★★★Dilacerador da Cruzada"}, {"item_id": 50208, "nome": "★★★Dilacerador de Almas"}, {"item_id": 50214, "nome": "★★★Vingança do Dragão"}, {"item_id": 50219, "nome": "★★★Fúria da Fênix"}, {"item_id": 50226, "nome": "★★★Cântico Frio"}, {"item_id": 50231, "nome": "★★★Clareza do Falcão"}, {"item_id": 50232, "nome": "★★★Clareza da Chita"}, {"item_id": 60529, "nome": "★★★Golpe do Serafim Floral"}, {"item_id": 60530, "nome": "★★★Golpe do Serafim Jovial"}, {"item_id": 60569, "nome": "★★★Conquista Total da Audácia"}, {"item_id": 60570, "nome": "★★★Conquista Total"}, {"item_id": 70140, "nome": "★★★Tusita Rebelde"}, {"item_id": 70141, "nome": "★★★Tusita Destinado"}, {"item_id": 77103, "nome": "★★★Grou Onírico: Melodia"}, {"item_id": 77104, "nome": "★★★Grou Onírico: Viagem"}, {"item_id": 83303, "nome": "★★★Cinzas Sanguinárias: Inferno"}, {"item_id": 83304, "nome": "★★★Cinzas Sanguinárias: Emoção"}], "criado_em": "2026-10-25T16:58:50", "atualizado_em": "2026-10-25T17:02:06"},
@@ -62,10 +63,16 @@
     {"id": 15, "nome": "Runas Nv. 10", "itens": [{"item_id": 52184, "nome": "Runa Áurea Nv. 10"}, {"item_id": 52224, "nome": "Runa Argêntea Nv. 10"}, {"item_id": 52204, "nome": "Runa Celeste Nv. 10"}, {"item_id": 52214, "nome": "Runa Escarlate Nv. 10"}, {"item_id": 52194, "nome": "Runa Verdejante Nv. 10"}], "criado_em": "2026-10-26T14:02:33", "atualizado_em": "2026-10-26T14:02:33"}
   ],
   "favoritas": [
-    {"id": 107888, "nome": "DESAPEGO-360ATAK", "criado_em": "2026-10-28T16:22:37", "atualizado_em": "2026-10-28T16:22:37"},
-    {"id": 125584, "nome": "WarTiger", "criado_em": "2026-10-28T16:30:31", "atualizado_em": "2026-10-28T16:30:31"},
-    {"id": 220529, "nome": "-NHK-", "criado_em": "2026-10-28T16:24:50", "atualizado_em": "2026-10-28T16:24:50"},
+    {"id": 23648, "nome": "LenoreDove", "criado_em": "2026-10-31T11:24:40", "atualizado_em": "2026-10-31T11:24:40"},
+    {"id": 45520, "nome": "memoryzito", "criado_em": "2026-10-29T19:08:41", "atualizado_em": "2026-10-29T19:08:41"},
+    {"id": 68336, "nome": "GordaoFoguetes", "criado_em": "2026-11-04T21:49:50", "atualizado_em": "2026-11-04T21:49:50"},
+    {"id": 220529, "nome": "mMcc", "criado_em": "2026-11-04T10:30:18", "atualizado_em": "2026-11-04T10:30:18"},
+    {"id": 223968, "nome": "139EntradasTOTAL", "criado_em": "2026-11-02T22:49:05", "atualizado_em": "2026-11-02T22:49:05"},
+    {"id": 247186, "nome": "Revigorar-te-ei", "criado_em": "2026-11-03T16:42:04", "atualizado_em": "2026-11-03T16:42:04"},
     {"id": 303632, "nome": "ShinyLeafeon", "criado_em": "2026-10-28T16:24:31", "atualizado_em": "2026-10-28T16:24:31"},
-    {"id": 313280, "nome": "CD32NUEMAUP4", "criado_em": "2026-10-28T16:23:32", "atualizado_em": "2026-10-28T16:23:32"}
+    {"id": 373808, "nome": "ChoraNoBanho", "criado_em": "2026-10-31T16:36:58", "atualizado_em": "2026-10-31T16:36:58"},
+    {"id": 407969, "nome": "Robervaldo", "criado_em": "2026-11-03T22:28:35", "atualizado_em": "2026-11-03T22:28:35"},
+    {"id": 421296, "nome": "_G", "criado_em": "2026-11-03T16:42:06", "atualizado_em": "2026-11-03T16:42:06"},
+    {"id": 430736, "nome": "Reis", "criado_em": "2026-10-30T20:54:39", "atualizado_em": "2026-10-30T20:54:39"}
   ]
 }
