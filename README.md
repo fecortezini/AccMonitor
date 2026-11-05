@@ -48,6 +48,10 @@ A tabela de valores, as buscas salvas, os grupos de itens, as favoritas e as ⚙
   - o histórico de avisos;
   - a largura dos painéis;
   - o Telegram e o Discord, para os tokens não irem para o git.
+- **Levar as contas lidas para outro PC:** assim o outro PC não precisa ler de novo as contas que este já leu.
+  - **Neste PC:** na pasta do programa, rode `python\python.exe -m mercado.copiar_contas exportar`. Ele grava o `contas-de-outro-pc.db` com as contas no ar já lidas. Pode ser com o programa aberto. Valores, buscas, avisos, Telegram e Discord não vão junto.
+  - **No outro PC:** abra o programa por um minuto, para a lista dele ficar em dia, e feche. Ponha o arquivo na pasta do programa e abra o **Juntar contas.bat**.
+  - **O que vem:** os itens das contas que o outro PC tem no ar e ainda não leu, se foram lidas pelo mesmo preço. As que ele já leu ficam como estão. As contas novas continuam chegando pela lista, com os avisos.
 - **PC que já tinha dados:** na primeira vez com o arquivo, ficam valendo os dados do `meus-dados.json`, e os que o PC tinha são guardados em `meus-dados.anterior.json`.
 - **Conflito no git:** se o `git pull` deixar o `meus-dados.json` com conflito, uma faixa vermelha avisa no topo. Até você resolver, as mudanças na tabela, nas buscas e nas configurações não são salvas. Também dá para apagar o arquivo: o programa grava de novo os dados do PC.
 

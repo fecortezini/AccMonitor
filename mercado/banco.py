@@ -871,6 +871,70 @@ class Banco:
                             '(SELECT DISTINCT tooltip_id FROM itens WHERE tooltip_id IS NOT NULL)')
         return len(velhos)
 
+    # -------------------------------------------------------------- contas lidas em outro PC
+
+    def exportar_contas(self, destino):
+        """Grava em destino as contas no ar já lidas, com os itens, para outro PC juntar (juntar_contas).
+
+        Vai só o que foi lido do site: a tabela de valores, as buscas, os avisos e as configurações ficam
+        aqui (inclusive o Telegram e o Discord). Devolve quantas contas foram.
+        """
+        destino = Path(destino)
+        destino.unlink(missing_ok=True)
+        con = sqlite3.connect(destino, isolation_level=None)
+        try:
+            con.executescript(ESQUEMA)
+            con.execute('ATTACH DATABASE ? AS origem', (self.caminho,))
+            con.execute('BEGIN')  # uma leitura só: contas, itens e tooltips do mesmo momento
+            n = _copiar(con, 'anuncios', 'origem', 'main',
+                        'WHERE ativo = 1 AND itens_lidos_em IS NOT NULL AND preco_lido = preco')
+            _copiar(con, 'itens', 'origem', 'main', 'WHERE anuncio_id IN (SELECT id FROM main.anuncios)')
+            _copiar(con, 'tooltips', 'origem', 'main', 'WHERE id IN (SELECT tooltip_id FROM main.itens)')
+            _copiar(con, 'conhecidos', 'origem', 'main')
+            con.execute('COMMIT')
+        except BaseException:
+            con.close()
+            destino.unlink(missing_ok=True)
+            raise
+        con.close()
+        return n
+
+    def juntar_contas(self, arquivo):
+        """Traz de outro PC (o arquivo do exportar_contas) os itens das contas que este PC ainda tem de ler.
+
+        Só vêm as contas que este PC tem no ar e o outro leu pelo preço que ela tem aqui; as já lidas aqui
+        ficam como estão. Nenhuma conta entra ou sai: quem diz o que está no ar, e avisa as novas, é a
+        consulta da lista. Os lances vêm junto, menos os das favoritas (cada PC acompanha os dele de perto).
+        Devolve quantas contas vieram.
+        """
+        con = self.con
+        con.execute('ATTACH DATABASE ? AS outro', (str(arquivo),))
+        try:
+            tabelas = {r[0] for r in con.execute("SELECT name FROM outro.sqlite_master WHERE type = 'table'")}
+            if not {'anuncios', 'itens', 'tooltips', 'conhecidos'} <= tabelas:
+                raise ValueError(f'O {Path(arquivo).name} não tem contas de outro PC.')
+            with self._transacao():
+                con.execute('CREATE TEMP TABLE trazer AS SELECT a.id FROM anuncios a JOIN outro.anuncios o ON o.id = a.id '
+                            f'WHERE a.ativo = 1 AND {_PARA_LER} AND o.itens_lidos_em IS NOT NULL AND o.preco_lido = a.preco')
+                vindas = 'IN (SELECT id FROM temp.trazer)'
+                con.execute(f'DELETE FROM itens WHERE anuncio_id {vindas}')
+                _copiar(con, 'itens', 'outro', 'main', f'WHERE anuncio_id {vindas}')
+                _copiar(con, 'tooltips', 'outro', 'main',
+                        f'WHERE id IN (SELECT tooltip_id FROM outro.itens WHERE anuncio_id {vindas})', ignorar=True)
+                _copiar(con, 'conhecidos', 'outro', 'main', ignorar=True)
+                con.execute('UPDATE anuncios SET itens_lidos_em = o.itens_lidos_em, preco_lido = o.preco_lido '
+                            f'FROM outro.anuncios o WHERE o.id = anuncios.id AND anuncios.id {vindas}')
+                con.execute('UPDATE anuncios SET lances = o.lances, maior_lance = o.maior_lance, lances_em = o.lances_em, '
+                            'lance_novo_em = o.lance_novo_em FROM outro.anuncios o WHERE o.id = anuncios.id '
+                            f'AND anuncios.id {vindas} AND anuncios.lances_em IS NULL AND o.lances_em IS NOT NULL '
+                            'AND anuncios.id NOT IN (SELECT id FROM main.favoritas)')
+                ids = [r[0] for r in con.execute('SELECT id FROM temp.trazer')]
+                con.execute('DROP TABLE temp.trazer')
+        finally:
+            con.execute('DETACH DATABASE outro')
+        self.recalcular(ids)
+        return len(ids)
+
     # -------------------------------------------------------------- valor das contas
 
     def _tabela(self):
@@ -1360,6 +1424,13 @@ class Banco:
 
 def _ha_24h():
     return (datetime.now() - timedelta(hours=24)).isoformat(timespec='seconds')
+
+
+def _copiar(con, tabela, de, para, onde='', ignorar=False):
+    """Copia as linhas da tabela entre dois bancos da conexão (main e um do ATTACH), pelos nomes das colunas."""
+    colunas = ', '.join(r[1] for r in con.execute(f'PRAGMA {para}.table_info({tabela})'))
+    return con.execute(f'INSERT {"OR IGNORE " if ignorar else ""}INTO {para}.{tabela} ({colunas}) '
+                       f'SELECT {colunas} FROM {de}.{tabela} {onde}').rowcount
 
 
 def _apagar_itens(con, ids):

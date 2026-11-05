@@ -6,6 +6,7 @@ mercado.log*
 .instancia.json
 meus-dados.json.tmp
 meus-dados.anterior.json
+contas-de-outro-pc.*
 
 # Helper antigo (linha de comando)
 estado.json

@@ -507,5 +507,78 @@ class Favoritas(BaseBanco):
         self.assertEqual((avisos[0]['classe'], avisos[0]['nivel'], avisos[0]['evento']), ('Bárbaro', 105, 'saiu'))
 
 
+class ContasDeOutroPC(BaseBanco):
+    """O banco da BaseBanco é o PC que leu as contas; o outro só tem a lista."""
+
+    def setUp(self):
+        super().setUp()
+        self.banco.salvar_config({'telegram_token': 'segredo'})
+        self.banco.gravar_lance(231216, {'pendentes': 2, 'maior': 1800})
+        self.arquivo = Path(self.pasta) / 'contas.db'
+        self.outro = Banco(Path(self.pasta) / 'outro.db')
+        self.outro.atualizar_lista(self.lista)
+        self.outro.salvar_valor({'nome': 'Cosmos', 'item_id': COSMOS, 'refino_min': 12, 'valor_kk': 6000})
+
+    def tearDown(self):
+        self.outro.fechar()
+        super().tearDown()
+
+    def test_exporta_so_as_lidas_no_ar(self):
+        lista = dict(self.lista)
+        del lista[45520]
+        self.banco.atualizar_lista(lista)
+        self.assertEqual(self.banco.exportar_contas(self.arquivo), 1)
+        con = sqlite3.connect(self.arquivo)
+        try:
+            self.assertEqual([r[0] for r in con.execute('SELECT id FROM anuncios')], [231216])
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM itens').fetchone()[0], len(self.itens[231216]))
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM config').fetchone()[0], 0)  # o Telegram fica aqui
+        finally:
+            con.close()
+
+    def test_junta_as_que_faltam_ler(self):
+        self.banco.exportar_contas(self.arquivo)
+        self.assertEqual(self.outro.juntar_contas(self.arquivo), 2)
+        self.assertEqual([c['id'] for c in self.outro.contas_para_ler()],
+                         [c['id'] for c in self.banco.contas_para_ler()])  # as duas não são lidas de novo
+        conta, original = self.outro.conta(231216), self.banco.conta(231216)
+        self.assertEqual((conta['itens'], conta['tooltips']), (original['itens'], original['tooltips']))
+        a = self.outro.anuncio(231216)
+        self.assertEqual((a['valor_kk'], a['maior_lance']), (6000, 1800))  # o valor é pela tabela deste PC
+        tipo = self.outro.con.execute('SELECT tipo FROM conhecidos WHERE item_id = ?', (DEMONIO,)).fetchone()
+        self.assertEqual(tipo[0], 'pedra')
+
+    def test_nao_mexe_no_que_este_pc_ja_tem(self):
+        lista = dict(self.lista)
+        lista[1] = site.Anuncio(id=1, preco=50, nivel=105, ocupacao=6, nome='Novata', classe='Arqueiro', ceu='')
+        self.banco.atualizar_lista(lista)
+        self.banco.gravar_itens(1, self.itens[45520], 50)
+        self.banco.exportar_contas(self.arquivo)
+        lista = dict(self.lista)
+        lista[231216] = dataclasses.replace(lista[231216], preco=lista[231216].preco - 100)
+        self.outro.atualizar_lista(lista)
+        self.outro.gravar_itens(45520, self.itens[45520][:3], lista[45520].preco, quando='2026-01-01T10:00:00')
+        self.assertEqual(self.outro.juntar_contas(self.arquivo), 0)
+        a = self.outro.anuncio(45520)  # já lida aqui: fica como estava
+        self.assertEqual((a['itens_lidos_em'], len(self.outro.conta(45520)['itens'])), ('2026-01-01T10:00:00', 3))
+        self.assertIn(231216, [c['id'] for c in self.outro.contas_para_ler()])  # lá foi lida por outro preço
+        self.assertIsNone(self.outro.anuncio(1))  # quem diz que contas estão no ar é a lista deste PC
+
+    def test_lances_das_favoritas_ficam(self):
+        self.banco.exportar_contas(self.arquivo)
+        self.outro.marcar_favorita(231216)
+        self.outro.juntar_contas(self.arquivo)
+        a = self.outro.anuncio(231216)
+        self.assertIsNotNone(a['itens_lidos_em'])
+        self.assertIsNone(a['lances_em'])  # os lances das favoritas cada PC lê de perto
+
+    def test_arquivo_sem_contas(self):
+        sqlite3.connect(self.arquivo).close()
+        with self.assertRaises(ValueError):
+            self.outro.juntar_contas(self.arquivo)
+        self.banco.exportar_contas(self.arquivo)  # o banco continua bom para juntar depois
+        self.assertEqual(self.outro.juntar_contas(self.arquivo), 2)
+
+
 if __name__ == '__main__':
     unittest.main()

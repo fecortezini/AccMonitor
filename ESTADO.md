@@ -1,6 +1,6 @@
 # Estado do projeto
 
-*Atualizado em 28/10/2026.*
+*Atualizado em 04/11/2026.*
 
 ## O projeto
 
@@ -26,6 +26,19 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Janela própria:** o Edge abre em modo aplicativo, e fechar a janela encerra o programa.
 
 **Melhorias depois da primeira versão:**
+- **Contas lidas para outro PC (04/11):** um PC não precisa ler de novo as contas que outro já leu. Foi pedido para o PC de um amigo, que já tinha parte das contas lidas. O código fica em `mercado/copiar_contas.py`.
+  - **Exportar:** `python\python.exe -m mercado.copiar_contas exportar` grava o `contas-de-outro-pc.db` (fora do git).
+    - **O que vai:** as contas no ar lidas pelo preço atual, com os itens, os tooltips e os itens conhecidos.
+    - **O que fica:** a tabela de valores, as buscas, os avisos e as configurações, inclusive o Telegram e o Discord.
+    - **Programa aberto:** pode, porque o exportar só lê o banco.
+    - **Em 04/11:** 2.918 contas, 183 MB, em 17 s.
+  - **Juntar:** no outro PC, com o programa fechado, o `Juntar contas.bat`.
+    - **O que vem:** os itens das contas que esse PC tem no ar e ainda não leu, quando o outro PC leu pelo mesmo preço. O valor é recalculado pela tabela desse PC.
+  - **O que não muda:**
+    - as contas já lidas no PC ficam como estão;
+    - nenhuma conta entra ou sai da lista, e as novas continuam vindo pela consulta da lista, com os avisos;
+    - os lances só vêm para as contas sem lances vistos, menos as favoritas, que cada PC acompanha de perto.
+  - **Ensaio em 04/11:** numa cópia do banco real, metade das contas no ar (1.459) ficou sem ler. O juntar trouxe todas em 8,5 s, e o banco ficou íntegro. O valor bateu com o original, a não ser pelo arredondamento na última casa decimal.
 - **Favoritas (28/10):** marcar contas com a ☆ (na lista ou nos detalhes) e acompanhar cada uma numa aba própria. O desenho está em [docs/superpowers/specs/2026-10-28-favoritas-design.md](docs/superpowers/specs/2026-10-28-favoritas-design.md).
   - **Avisos:**
     - baixou de preço;
@@ -129,7 +142,7 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Busca por parte do nome (21/09):** o "Tem item" aceita parte do nome, inclusive de itens ainda não vistos nas contas lidas. Exemplo: "pedra do dem" no começo da carga, quando só as contas baratas foram lidas. Outro exemplo: "relíquia maravilha", que soma as três relíquias.
 
 **Testes:**
-- **Automáticos:** 195, com páginas reais do site salvas. Entre elas, desde 28/10, o histórico de vendas buscado por nome e duas páginas de venda: uma por lance e uma direta. A sincronia é testada com git de verdade: um "GitHub" numa pasta e dois clones. Todos passam.
+- **Automáticos:** 200, com páginas reais do site salvas. Entre elas, desde 28/10, o histórico de vendas buscado por nome e duas páginas de venda: uma por lance e uma direta. A sincronia é testada com git de verdade: um "GitHub" numa pasta e dois clones. Todos passam.
 - **Interface:** o `tests/interface/testar_interface.mjs` clica nos elementos num Edge invisível e salva prints.
   - **Primeira versão:** rodou sem erros.
   - **Depois das melhorias:** as telas foram conferidas com um script avulso, porque o PC onde foram feitas não tinha Node. Ele cobriu os passos do teste antigo e os novos, sem erros. Em 22/09 o teste rodou de novo, com Node, e passou sem erros.
@@ -137,7 +150,7 @@ O **Mercado PW** é um programa de PC que acompanha o Marketplace The Classic (P
 - **Com o site de verdade:** leu 1.523 anúncios. Depois que cadastrei o Cosmos na tabela, as contas com Cosmos foram lidas primeiro e mostraram valor e lucro.
 - **Janela real:** abre, e ao fechar o programa encerra em ~2 s.
 
-**Situação dos dados:** a tabela de valores, as buscas e as configurações estão no `meus-dados.json`, no git. O `mercado.db` fica fora do git: cada PC tem o seu, e num PC novo o programa começa a ler as contas do zero.
+**Situação dos dados:** a tabela de valores, as buscas e as configurações estão no `meus-dados.json`, no git. O `mercado.db` fica fora do git, e cada PC tem o seu. Num PC novo, o programa começa a ler as contas do zero, a não ser que receba as contas de outro PC pelo `Juntar contas.bat`.
 
 ## O que falta
 
@@ -186,4 +199,5 @@ cd Classic187AccountMonitor
 | `mercado/sincronia.py` | Botão Sincronizar: o `meus-dados.json` com o GitHub, juntando os dados item a item. |
 | `mercado/ui/` | Interface (`index.html`, `app.css`, `app.js`). |
 | `mercado/__main__.py` | Abre tudo e a janela do Edge. |
+| `mercado/copiar_contas.py` | Exporta as contas lidas e as junta em outro PC (`Juntar contas.bat`). |
 | `tests/` | Testes automáticos, páginas reais salvas e o teste de interface. |
